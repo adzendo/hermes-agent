@@ -162,10 +162,15 @@ class ResponsesApiTransport(ProviderTransport):
             elif reasoning_config.get("effort"):
                 reasoning_effort = reasoning_config["effort"]
 
-        from hermes_constants import is_codex_gpt55_model, normalize_reasoning_effort_for_model
+        from hermes_constants import is_codex_gpt55_model, resolve_reasoning_effort_for_request
 
         if is_codex_gpt55_model("openai-codex" if is_codex_backend else None, model):
-            normalized = normalize_reasoning_effort_for_model(reasoning_effort, "openai-codex", model)
+            normalized = resolve_reasoning_effort_for_request(
+                reasoning_effort,
+                "openai-codex",
+                model,
+                default="low",
+            )
             # Backward-compatible safety for stale config/presets created before
             # GPT-5.5 exposed its official Low/Medium/High/Extra High surface.
             reasoning_effort = normalized or "low"

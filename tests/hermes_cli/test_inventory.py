@@ -342,7 +342,7 @@ def test_build_models_payload_capabilities_include_model_specific_efforts():
 
     legacy = next(row for row in payload["providers"] if row["slug"] == "openrouter")
     legacy_caps = legacy["capabilities"]["anthropic/claude-sonnet-4.8"]
-    assert legacy_caps["reasoning_efforts"] == ["minimal", "low", "medium", "high", "xhigh"]
+    assert legacy_caps["reasoning_efforts"] == ["low", "medium", "high", "xhigh", "max"]
 
 
 # ─── picker_hints ──────────────────────────────────────────────────────

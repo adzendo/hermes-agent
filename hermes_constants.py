@@ -726,6 +726,17 @@ def resolve_reasoning_effort_for_request(
         # other request builders on the same safe path instead of omitting the
         # field or forwarding an unsupported value.
         return "low"
+    if is_codex_gpt55_model(provider, model):
+        # GPT-5.5 on the Codex/OAuth backend exposes Low / Medium / High /
+        # Extra High, with Extra High carried as Hermes' canonical ``xhigh``.
+        # Persisted configs are global, so a session can legitimately switch
+        # from an Opus preset with ``max`` to GPT-5.5.  Clamp that stale-but-
+        # semantically-strongest request to GPT-5.5's strongest accepted level
+        # instead of falling through to a low-effort default.
+        if value == "max":
+            return "xhigh"
+        if value == "minimal":
+            return "low"
     if value == "xhigh" and _is_anthropic_46_reasoning_model(provider, model):
         return "max"
     if default is not None:

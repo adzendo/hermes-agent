@@ -426,6 +426,8 @@ class TestParseReasoningEffort:
         assert normalize_reasoning_effort_for_model("Extra High", "openai-codex", "gpt-5.5") == "xhigh"
         assert normalize_reasoning_effort_for_model("max", "openai-codex", "gpt-5.5") is None
         assert normalize_reasoning_effort_for_model("minimal", "openai-codex", "gpt-5.5") is None
+        assert resolve_reasoning_effort_for_request("max", "openai-codex", "gpt-5.5") == "xhigh"
+        assert resolve_reasoning_effort_for_request("minimal", "openai-codex", "gpt-5.5") == "low"
         assert reasoning_effort_display_label("low") == "Low"
         assert reasoning_effort_display_label("medium") == "Medium"
         assert reasoning_effort_display_label("high") == "High"

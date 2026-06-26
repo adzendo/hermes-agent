@@ -83,6 +83,7 @@ class TestCodexBuildKwargs:
             ("high", "high"),
             ("xhigh", "xhigh"),
             ("extra high", "xhigh"),
+            ("max", "xhigh"),
             ("minimal", "low"),
         ],
     )
