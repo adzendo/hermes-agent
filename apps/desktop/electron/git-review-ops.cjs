@@ -8,11 +8,83 @@
 
 const { execFile } = require('node:child_process')
 const fs = require('node:fs/promises')
+const os = require('node:os')
 const path = require('node:path')
 
-const simpleGit = require('simple-git')
-
 const { resolveRequestedPathForIpc } = require('./hardening.cjs')
+
+let simpleGitFactory
+let simpleGitLoadError
+
+function candidateSimpleGitRoots() {
+  const roots = []
+  const add = value => {
+    if (value && typeof value === 'string') {
+      roots.push(value)
+    }
+  }
+
+  // Development / unpacked builds resolve this through the normal Node module
+  // graph. Packaged desktop builds intentionally skip electron-builder's
+  // node_modules collector, so also walk from the app bundle back to the Hermes
+  // checkout and try the install's shared node_modules tree.
+  add(__dirname)
+  add(process.resourcesPath)
+  add(path.dirname(process.execPath || ''))
+  add(process.cwd())
+  add(path.join(os.homedir(), '.hermes', 'hermes-agent'))
+
+  return roots
+}
+
+function requireSimpleGitFromAncestors(start) {
+  let current = path.resolve(start)
+
+  while (true) {
+    const candidate = path.join(current, 'node_modules', 'simple-git')
+
+    try {
+      return require(candidate)
+    } catch (err) {
+      if (err && err.code !== 'MODULE_NOT_FOUND') {
+        throw err
+      }
+    }
+
+    const parent = path.dirname(current)
+
+    if (parent === current) {
+      return null
+    }
+
+    current = parent
+  }
+}
+
+function loadSimpleGit() {
+  if (simpleGitFactory) {
+    return simpleGitFactory
+  }
+
+  try {
+    simpleGitFactory = require('simple-git')
+    return simpleGitFactory
+  } catch (err) {
+    simpleGitLoadError = err
+  }
+
+  for (const root of candidateSimpleGitRoots()) {
+    const loaded = requireSimpleGitFromAncestors(root)
+
+    if (loaded) {
+      simpleGitFactory = loaded
+      return simpleGitFactory
+    }
+  }
+
+  const detail = simpleGitLoadError && simpleGitLoadError.message ? ` (${simpleGitLoadError.message})` : ''
+  throw new Error(`simple-git is unavailable; git review actions are disabled${detail}`)
+}
 
 const COMMIT_CONTEXT_DIFF_MAX_CHARS = 120_000
 const COMMIT_CONTEXT_UNTRACKED_MAX = 80
@@ -45,6 +117,8 @@ function runGh(args, cwd, ghBin) {
 }
 
 function gitFor(cwd, gitBin) {
+  const simpleGit = loadSimpleGit()
+
   return simpleGit({ baseDir: cwd, binary: gitBin || 'git', maxConcurrentProcesses: 4, trimmed: false })
 }
 
