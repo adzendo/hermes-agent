@@ -19,7 +19,7 @@ export const EFFORT_OPTIONS: ReadonlyArray<EffortOption> = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-  { value: "extra_high", label: "Extra High" },
+  { value: "extra_high", label: "xhigh" },
 ];
 
 export const VALID_EFFORTS: ReadonlySet<string> = new Set(
