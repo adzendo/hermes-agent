@@ -141,5 +141,5 @@ def test_gateway_locale_reasoning_usage_does_not_advertise_legacy_efforts():
         assert "<none|minimal|low|medium|high|xhigh|reset|show|hide>" not in text, locale_file.name
 
     en = (locales_dir / "en.yaml").read_text(encoding="utf-8")
-    assert "**Valid levels:** low, medium, high, extra high" in en
-    assert "/reasoning <low|medium|high|extra high|reset|show|hide> [--global]" in en
+    assert "Valid for current model: {valid_levels}" in en
+    assert "/reasoning <level|reset|show|hide> [--global]" in en
