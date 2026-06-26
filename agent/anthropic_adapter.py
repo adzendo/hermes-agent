@@ -55,7 +55,7 @@ def _get_anthropic_sdk():
 
 logger = logging.getLogger(__name__)
 
-THINKING_BUDGET = {"xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
+THINKING_BUDGET = {"max": 32000, "xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
 # Hermes effort → Anthropic adaptive-thinking effort (output_config.effort).
 # Anthropic exposes 5 levels on 4.7+: low, medium, high, xhigh, max.
 # Opus/Sonnet 4.6 only expose 4 levels: low, medium, high, max — no xhigh.
@@ -890,13 +890,20 @@ def _read_claude_code_credentials_from_keychain() -> Optional[Dict[str, Any]]:
         logger.debug("Keychain: no entry found for 'Claude Code-credentials'")
         return None
 
-    raw = result.stdout.strip()
+    raw_output = result.stdout
+    if isinstance(raw_output, bytes):
+        raw = raw_output.decode("utf-8", errors="ignore").strip()
+    elif isinstance(raw_output, str):
+        raw = raw_output.strip()
+    else:
+        logger.debug("Keychain: credentials payload was not text")
+        return None
     if not raw:
         return None
 
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         logger.debug("Keychain: credentials payload is not valid JSON")
         return None
 

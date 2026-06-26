@@ -1,4 +1,4 @@
-export type EffortLabelKey = 'minimal' | 'low' | 'medium' | 'high' | 'max'
+export type EffortLabelKey = 'minimal' | 'low' | 'medium' | 'high' | 'extraHigh' | 'max'
 
 export const LEGACY_REASONING_EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
 export const LEGACY_REASONING_DEFAULT_OPTIONS = ['none', ...LEGACY_REASONING_EFFORT_OPTIONS] as const
@@ -8,20 +8,20 @@ export const EFFORT_LABEL_KEYS: Record<string, EffortLabelKey> = {
   low: 'low',
   medium: 'medium',
   high: 'high',
-  xhigh: 'max'
+  xhigh: 'extraHigh',
+  max: 'max'
 }
 
 const REASONING_ALIASES: Record<string, string> = {
   off: 'none',
   disabled: 'none',
-  max: 'xhigh',
-  maximum: 'xhigh',
+  maximum: 'max',
   'extra-high': 'xhigh',
   'extra high': 'xhigh',
   extrahigh: 'xhigh'
 }
 
-const CANONICAL_REASONING_EFFORTS = new Set(['none', ...LEGACY_REASONING_EFFORT_OPTIONS])
+const CANONICAL_REASONING_EFFORTS = new Set(['none', ...LEGACY_REASONING_EFFORT_OPTIONS, 'max'])
 
 export function canonicalReasoningEffort(value: unknown): string {
   const raw = String(value ?? '').trim().toLowerCase()

@@ -99,9 +99,23 @@ describe('ModelEditSubmenu no-session guard', () => {
 
     expect(screen.queryByText('Thinking')).toBeNull()
     expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Max')).toBeNull()
     expect(screen.getByText('Low')).toBeTruthy()
     expect(screen.getByText('Medium')).toBeTruthy()
     expect(screen.getByText('High')).toBeTruthy()
     expect(screen.getByText('Extra High')).toBeTruthy()
+  })
+
+  it('Anthropic Opus 4.8 capabilities render Extra High and Max separately', () => {
+    const requestGateway = vi.fn().mockResolvedValue({})
+    renderSubmenu({
+      fastControl: { kind: 'none' },
+      reasoning: true,
+      reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+      requestGateway
+    })
+
+    expect(screen.getByText('Extra High')).toBeTruthy()
+    expect(screen.getByText('Max')).toBeTruthy()
   })
 })

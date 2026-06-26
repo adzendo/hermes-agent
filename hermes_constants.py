@@ -548,8 +548,14 @@ def apply_subprocess_home_env(env: dict[str, str]) -> None:
         env["HOME"] = home
 
 
-VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
+LEGACY_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
 CODEX_GPT55_REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
+ANTHROPIC_46_REASONING_EFFORTS = ("low", "medium", "high", "max")
+ANTHROPIC_MODERN_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+GEMINI_FLASH_REASONING_EFFORTS = ("minimal", "low", "medium", "high")
+GEMINI_STANDARD_REASONING_EFFORTS = ("low", "medium", "high")
+GEMINI_PRO_STRICT_REASONING_EFFORTS = ("low", "high")
 _REASONING_EFFORT_LABELS = {
     "none": "None",
     "minimal": "Minimal",
@@ -557,11 +563,14 @@ _REASONING_EFFORT_LABELS = {
     "medium": "Medium",
     "high": "High",
     "xhigh": "Extra High",
+    "max": "Max",
 }
 _REASONING_ALIASES = {
     "extra_high": "xhigh",
     "extra-high": "xhigh",
     "extra high": "xhigh",
+    "extrahigh": "xhigh",
+    "maximum": "max",
 }
 
 
@@ -580,13 +589,76 @@ def _normalize_model_id_for_reasoning(model: str) -> str:
     return value
 
 
+def _provider_for_reasoning(provider: str | None) -> str:
+    return str(provider or "").strip().lower().replace("_", "-")
+
+
+def _is_anthropic_reasoning_model(provider: str | None, model: str | None) -> bool:
+    provider_value = _provider_for_reasoning(provider)
+    raw_model = str(model or "").strip().lower()
+    model_value = _normalize_model_id_for_reasoning(raw_model)
+    if provider_value in {"anthropic", "claude", "anthropic-messages"}:
+        return model_value.startswith("claude-")
+    if provider_value == "openrouter" and raw_model.startswith("anthropic/"):
+        return model_value.startswith("claude-")
+    return False
+
+
+def _is_anthropic_46_reasoning_model(provider: str | None, model: str | None) -> bool:
+    if not _is_anthropic_reasoning_model(provider, model):
+        return False
+    model_value = _normalize_model_id_for_reasoning(str(model or ""))
+    return "claude-opus-4.6" in model_value or "claude-opus-4-6" in model_value or (
+        "claude-sonnet-4.6" in model_value or "claude-sonnet-4-6" in model_value
+    )
+
+
+def _is_modern_anthropic_reasoning_model(provider: str | None, model: str | None) -> bool:
+    if not _is_anthropic_reasoning_model(provider, model):
+        return False
+    model_value = _normalize_model_id_for_reasoning(str(model or ""))
+    legacy_prefixes = (
+        "claude-3",
+        "claude-opus-4-0", "claude-opus-4.0", "claude-opus-4-1", "claude-opus-4.1",
+        "claude-sonnet-4-5", "claude-sonnet-4.5",
+        "claude-haiku-4-5", "claude-haiku-4.5",
+    )
+    return not model_value.startswith(legacy_prefixes)
+
+
+def _is_gemini_reasoning_model(provider: str | None, model: str | None) -> bool:
+    provider_value = _provider_for_reasoning(provider)
+    raw_model = str(model or "").strip().lower()
+    model_value = _normalize_model_id_for_reasoning(raw_model)
+    if provider_value in {"gemini", "google", "google-gemini"}:
+        return model_value.startswith("gemini-")
+    if provider_value == "openrouter" and raw_model.startswith("google/gemini-"):
+        return model_value.startswith("gemini-")
+    return False
+
+
+def _gemini_reasoning_efforts(model: str | None) -> tuple[str, ...]:
+    model_value = _normalize_model_id_for_reasoning(str(model or ""))
+    if not model_value.startswith("gemini-"):
+        return LEGACY_REASONING_EFFORTS
+    if model_value.startswith("gemini-2.5-"):
+        return GEMINI_STANDARD_REASONING_EFFORTS
+    if model_value.startswith("gemini-3.1-"):
+        return GEMINI_STANDARD_REASONING_EFFORTS
+    if "flash" in model_value and model_value.startswith(("gemini-3-", "gemini-3.0-", "gemini-3.5-")):
+        return GEMINI_FLASH_REASONING_EFFORTS
+    if "pro" in model_value and model_value.startswith(("gemini-3-", "gemini-3.0-")):
+        return GEMINI_PRO_STRICT_REASONING_EFFORTS
+    return GEMINI_STANDARD_REASONING_EFFORTS
+
+
 def is_codex_gpt55_model(provider: str | None, model: str | None) -> bool:
     """True for GPT-5.5 on the ChatGPT Codex/OAuth provider.
 
     GPT-5.5's public effort surface is Low / Medium / High / Extra High.
-    Hermes stores Extra High as the wire-compatible ``xhigh`` enum.
+    Hermes stores Extra High as the canonical ``xhigh`` wire enum.
     """
-    provider_value = str(provider or "").strip().lower()
+    provider_value = _provider_for_reasoning(provider)
     if provider_value not in {"openai-codex", "codex"}:
         return False
     model_value = _normalize_model_id_for_reasoning(str(model or ""))
@@ -602,6 +674,12 @@ def reasoning_efforts_for_model(provider: str | None = None, model: str | None =
     """
     if is_codex_gpt55_model(provider, model):
         return CODEX_GPT55_REASONING_EFFORTS
+    if _is_anthropic_46_reasoning_model(provider, model):
+        return ANTHROPIC_46_REASONING_EFFORTS
+    if _is_modern_anthropic_reasoning_model(provider, model):
+        return ANTHROPIC_MODERN_REASONING_EFFORTS
+    if _is_gemini_reasoning_model(provider, model):
+        return _gemini_reasoning_efforts(model)
     return VALID_REASONING_EFFORTS
 
 
@@ -613,12 +691,45 @@ def normalize_reasoning_effort_for_model(
     """Normalize and validate an effort for a provider/model pair.
 
     Returns the canonical stored/wire value, or ``None`` when unavailable.
-    ``xhigh`` is the canonical value for the user-facing "Extra High" tier.
+    ``xhigh`` is the canonical value for the user-facing "Extra High" tier;
+    ``max`` is a distinct strongest tier on providers that expose it.
     """
     value = str(effort or "").strip().lower()
     value = _REASONING_ALIASES.get(value, value)
     if value in reasoning_efforts_for_model(provider, model):
         return value
+    return None
+
+
+def resolve_reasoning_effort_for_request(
+    effort: str | None,
+    provider: str | None = None,
+    model: str | None = None,
+    *,
+    default: str | None = None,
+) -> str | None:
+    """Return a safe wire effort for a provider/model request.
+
+    This is slightly more permissive than ``normalize_reasoning_effort_for_model``
+    because request builders also receive stale persisted configs.  In particular,
+    Claude 4.6 rejects ``xhigh`` but accepts ``max``; map that one stale value to
+    the strongest supported level instead of forwarding a guaranteed API 400.
+    """
+    normalized = normalize_reasoning_effort_for_model(effort or "", provider, model)
+    if normalized is not None:
+        return normalized
+    value = _REASONING_ALIASES.get(str(effort or "").strip().lower(), str(effort or "").strip().lower())
+    if value == "minimal" and _is_anthropic_reasoning_model(provider, model):
+        # ``minimal`` is a legacy Hermes UI/config tier.  Anthropic adaptive
+        # thinking exposes ``low`` as its smallest wire effort; the direct
+        # Anthropic adapter has long mapped minimal→low, so keep OpenRouter and
+        # other request builders on the same safe path instead of omitting the
+        # field or forwarding an unsupported value.
+        return "low"
+    if value == "xhigh" and _is_anthropic_46_reasoning_model(provider, model):
+        return "max"
+    if default is not None:
+        return normalize_reasoning_effort_for_model(default, provider, model)
     return None
 
 
@@ -645,7 +756,7 @@ def format_reasoning_effort_labels(efforts: tuple[str, ...] | list[str]) -> str:
 def parse_reasoning_effort(effort: str) -> dict | None:
     """Parse a reasoning effort level into a config dict.
 
-    Valid global levels: "none", "minimal", "low", "medium", "high", "xhigh".
+    Valid global levels: "none", "minimal", "low", "medium", "high", "xhigh", "max".
     Provider/model-specific UIs may expose a narrower set via
     ``reasoning_efforts_for_model``.
     Returns None when the input is empty or unrecognized (caller uses default).

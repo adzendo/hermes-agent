@@ -1950,6 +1950,7 @@ export const zh: Translations = {
       low: '低',
       medium: '中',
       high: '高',
+      extraHigh: '特高',
       max: '最高',
       updateFailed: '模型选项更新失败',
       fastFailed: '快速模式更新失败'

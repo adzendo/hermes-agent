@@ -146,6 +146,31 @@ class TestOpenRouterProfileParity:
         )
         assert profile["extra_body"]["reasoning"] == legacy["extra_body"]["reasoning"]
 
+    def test_anthropic_46_xhigh_routes_to_max_verbosity(self, transport):
+        kw = transport.build_kwargs(
+            model="anthropic/claude-sonnet-4.6",
+            messages=_msgs(),
+            tools=None,
+            provider_profile=get_provider_profile("openrouter"),
+            supports_reasoning=True,
+            reasoning_config={"enabled": True, "effort": "xhigh"},
+        )
+        assert "reasoning" not in kw.get("extra_body", {})
+        assert kw["verbosity"] == "max"
+
+    def test_anthropic_48_preserves_xhigh_and_max_verbosity_distinction(self, transport):
+        for effort in ("xhigh", "max"):
+            kw = transport.build_kwargs(
+                model="anthropic/claude-opus-4.8",
+                messages=_msgs(),
+                tools=None,
+                provider_profile=get_provider_profile("openrouter"),
+                supports_reasoning=True,
+                reasoning_config={"enabled": True, "effort": effort},
+            )
+            assert "reasoning" not in kw.get("extra_body", {})
+            assert kw["verbosity"] == effort
+
 
 class TestNousProfileParity:
     def test_tags(self, transport):

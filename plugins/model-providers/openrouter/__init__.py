@@ -153,7 +153,15 @@ class OpenRouterProfile(ProviderProfile):
                 # isn't explicitly disabled. Otherwise omit ``verbosity`` so the
                 # model keeps its own adaptive default (``high``).
                 if cfg.get("enabled", True) is not False and effort and effort != "none":
-                    top_level["verbosity"] = effort
+                    from hermes_constants import resolve_reasoning_effort_for_request
+
+                    resolved_effort = resolve_reasoning_effort_for_request(
+                        effort,
+                        "openrouter",
+                        model,
+                    )
+                    if resolved_effort:
+                        top_level["verbosity"] = resolved_effort
             elif reasoning_config is not None:
                 extra_body["reasoning"] = dict(reasoning_config)
             else:

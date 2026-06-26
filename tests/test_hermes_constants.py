@@ -13,6 +13,7 @@ from hermes_constants import (
     normalize_reasoning_effort_for_model,
     reasoning_effort_display_label,
     reasoning_efforts_for_model,
+    resolve_reasoning_effort_for_request,
     agent_browser_runnable,
     find_hermes_node_executable,
     find_node_executable,
@@ -325,7 +326,7 @@ class TestParseReasoningEffort:
 
     @pytest.mark.parametrize(
         "value",
-        ["bogus", "very-high", "max", "0", "off", "true", "default"],
+        ["bogus", "very-high", "0", "off", "true", "default"],
     )
     def test_unknown_levels_return_none(self, value):
         """Unrecognized strings fall back to the caller default (None)."""
@@ -334,12 +335,78 @@ class TestParseReasoningEffort:
     def test_known_supported_levels_are_documented(self):
         """Guard against silently dropping a documented level.
 
-        The docstring promises "minimal", "low", "medium", "high", "xhigh".
+        The docstring promises "minimal", "low", "medium", "high", "xhigh", "max".
         If someone removes one from VALID_REASONING_EFFORTS without updating
         the docstring, this test will fail and force the call out.
         """
-        documented = {"minimal", "low", "medium", "high", "xhigh"}
+        documented = {"minimal", "low", "medium", "high", "xhigh", "max"}
         assert documented.issubset(set(VALID_REASONING_EFFORTS))
+
+    def test_max_is_a_distinct_global_reasoning_effort(self):
+        """Max is not an alias for xhigh; providers that support both must preserve both."""
+        assert parse_reasoning_effort("max") == {"enabled": True, "effort": "max"}
+        assert normalize_reasoning_effort_for_model("max", "anthropic", "claude-opus-4.8") == "max"
+        assert normalize_reasoning_effort_for_model("xhigh", "anthropic", "claude-opus-4.8") == "xhigh"
+        assert reasoning_effort_display_label("xhigh") == "Extra High"
+        assert reasoning_effort_display_label("max") == "Max"
+
+    def test_anthropic_effort_surfaces_are_model_version_specific(self):
+        """Claude 4.6 has max but no xhigh; Claude 4.8 has both xhigh and max."""
+        assert reasoning_efforts_for_model("anthropic", "claude-sonnet-4.6") == (
+            "low",
+            "medium",
+            "high",
+            "max",
+        )
+        assert normalize_reasoning_effort_for_model("xhigh", "anthropic", "claude-sonnet-4.6") is None
+        assert normalize_reasoning_effort_for_model("max", "anthropic", "claude-sonnet-4.6") == "max"
+        assert resolve_reasoning_effort_for_request("xhigh", "anthropic", "claude-sonnet-4.6") == "max"
+        assert resolve_reasoning_effort_for_request("minimal", "anthropic", "claude-sonnet-4.6") == "low"
+
+        assert reasoning_efforts_for_model("anthropic", "claude-opus-4.8") == (
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+        )
+        assert format_reasoning_effort_labels(reasoning_efforts_for_model("anthropic", "claude-opus-4.8")) == (
+            "Low, Medium, High, Extra High, Max"
+        )
+        assert resolve_reasoning_effort_for_request("minimal", "anthropic", "claude-opus-4.8") == "low"
+
+    def test_openrouter_anthropic_models_expose_anthropic_surfaces(self):
+        assert reasoning_efforts_for_model("openrouter", "anthropic/claude-sonnet-4.6") == (
+            "low",
+            "medium",
+            "high",
+            "max",
+        )
+        assert reasoning_efforts_for_model("openrouter", "anthropic/claude-opus-4.8") == (
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+        )
+
+    def test_gemini_effort_surfaces_follow_model_family(self):
+        assert reasoning_efforts_for_model("gemini", "gemini-3-flash-preview") == (
+            "minimal",
+            "low",
+            "medium",
+            "high",
+        )
+        assert reasoning_efforts_for_model("gemini", "gemini-3.1-pro-preview") == (
+            "low",
+            "medium",
+            "high",
+        )
+        assert reasoning_efforts_for_model("gemini", "gemini-3-pro-preview") == (
+            "low",
+            "high",
+        )
+        assert normalize_reasoning_effort_for_model("max", "gemini", "gemini-3-flash-preview") is None
 
     def test_codex_gpt55_effort_surface_matches_official_levels(self):
         """GPT-5.5 over the Codex OAuth provider has no minimal/off surface.
@@ -357,6 +424,7 @@ class TestParseReasoningEffort:
             "xhigh",
         )
         assert normalize_reasoning_effort_for_model("Extra High", "openai-codex", "gpt-5.5") == "xhigh"
+        assert normalize_reasoning_effort_for_model("max", "openai-codex", "gpt-5.5") is None
         assert normalize_reasoning_effort_for_model("minimal", "openai-codex", "gpt-5.5") is None
         assert reasoning_effort_display_label("low") == "Low"
         assert reasoning_effort_display_label("medium") == "Medium"

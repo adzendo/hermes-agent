@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  EFFORT_LABEL_KEYS,
   LEGACY_REASONING_DEFAULT_OPTIONS,
   normalizeReasoningEffort,
   normalizeReasoningEffortForRequest,
@@ -34,7 +35,18 @@ describe('reasoning effort capabilities', () => {
     const gpt55 = ['low', 'medium', 'high', 'xhigh']
 
     expect(normalizeReasoningEffortForRequest('minimal', gpt55)).toBe('medium')
-    expect(normalizeReasoningEffortForRequest('max', gpt55)).toBe('xhigh')
+    expect(normalizeReasoningEffortForRequest('max', gpt55)).toBe('medium')
     expect(normalizeReasoningEffortForRequest('none', gpt55)).toBe('medium')
+  })
+
+  it('preserves xhigh and max as distinct canonical efforts', () => {
+    const opus48 = ['low', 'medium', 'high', 'xhigh', 'max']
+
+    expect(reasoningEffortOptions(['low', 'medium', 'high', 'xhigh', 'max'])).toEqual(opus48)
+    expect(normalizeReasoningEffort('extra high', opus48)).toBe('xhigh')
+    expect(normalizeReasoningEffort('max', opus48)).toBe('max')
+    expect(normalizeReasoningEffortForRequest('max', opus48)).toBe('max')
+    expect(EFFORT_LABEL_KEYS.xhigh).toBe('extraHigh')
+    expect(EFFORT_LABEL_KEYS.max).toBe('max')
   })
 })

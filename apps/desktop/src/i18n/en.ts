@@ -1775,7 +1775,8 @@ export const en: Translations = {
       low: 'Low',
       medium: 'Medium',
       high: 'High',
-      max: 'Extra High',
+      extraHigh: 'Extra High',
+      max: 'Max',
       updateFailed: 'Model option update failed',
       fastFailed: 'Fast mode update failed'
     },
