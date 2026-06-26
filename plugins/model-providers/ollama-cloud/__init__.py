@@ -6,9 +6,10 @@ supports top-level ``reasoning_effort`` with values ``none``, ``low``,
 empirically confirmed for DeepSeek V4 — ``max`` produces ~2.5× more
 thinking tokens than ``high``).
 
-This profile maps Hermes's ``xhigh`` → ``max`` to unlock DeepSeek V4's
-"Max thinking" tier through Ollama Cloud.  ``low`` / ``medium`` / ``high``
-pass through unchanged.
+This profile maps Hermes's canonical ``extra_high`` → ``max`` to unlock
+DeepSeek V4's "Max thinking" tier through Ollama Cloud.  ``low`` /
+``medium`` / ``high`` pass through unchanged. Legacy ``xhigh`` / ``max``
+aliases normalize to ``extra_high`` first.
 
 When reasoning is explicitly disabled (``enabled: false`` or
 ``effort: "none"``), ``reasoning_effort`` is omitted entirely so the
@@ -24,7 +25,7 @@ from providers.base import ProviderProfile
 
 
 class OllamaCloudProfile(ProviderProfile):
-    """Ollama Cloud — maps xhigh→max via top-level reasoning_effort."""
+    """Ollama Cloud — maps extra_high→max via top-level reasoning_effort."""
 
     def build_api_kwargs_extras(
         self,
@@ -45,13 +46,13 @@ class OllamaCloudProfile(ProviderProfile):
             if enabled is False:
                 return {}, {}  # omit → model runs without thinking
 
-            effort = (reasoning_config.get("effort") or "").strip().lower()
+            from hermes_constants import canonicalize_reasoning_effort
+
+            effort = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
             if not effort:
                 # No explicit effort requested — let the model decide
                 return {}, {}
-            if effort == "none":
-                return {}, {}  # explicit none → suppress thinking
-            if effort in ("xhigh", "max"):
+            if effort == "extra_high":
                 top_level["reasoning_effort"] = "max"
             elif effort in ("low", "medium", "high"):
                 top_level["reasoning_effort"] = effort

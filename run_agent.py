@@ -4967,18 +4967,18 @@ class AIAgent:
         if self.reasoning_config and isinstance(self.reasoning_config, dict):
             if self.reasoning_config.get("enabled") is False:
                 return None
-            requested_effort = str(
-                self.reasoning_config.get("effort", "medium")
-            ).strip().lower()
+            from hermes_constants import canonicalize_reasoning_effort
+
+            requested_effort = canonicalize_reasoning_effort(
+                str(self.reasoning_config.get("effort", "medium"))
+            ) or "medium"
         else:
             requested_effort = "medium"
 
-        if requested_effort == "xhigh" and "high" in supported_efforts:
+        if requested_effort == "extra_high" and "high" in supported_efforts:
             requested_effort = "high"
         elif requested_effort not in supported_efforts:
-            if requested_effort == "minimal" and "low" in supported_efforts:
-                requested_effort = "low"
-            elif "medium" in supported_efforts:
+            if "medium" in supported_efforts:
                 requested_effort = "medium"
             else:
                 requested_effort = supported_efforts[0]

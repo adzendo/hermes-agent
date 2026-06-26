@@ -714,17 +714,27 @@ class TestChatCompletionsLmStudioReasoning:
         )
         assert kw["reasoning_effort"] == "none"
 
-    def test_no_options_falls_back_to_legacy_behavior(self, transport):
+    def test_no_options_falls_back_to_provider_wire_mapping(self, transport):
         # When the probe failed or returned nothing, allowed_options is unknown;
-        # send whatever the user picked rather than blocking the request.
+        # send the canonical effort mapped to LM Studio's provider wire value.
         kw = transport.build_kwargs(
             model="gpt-oss", messages=[{"role": "user", "content": "Hi"}],
             is_lmstudio=True,
             supports_reasoning=True,
-            reasoning_config={"effort": "high"},
+            reasoning_config={"effort": "extra_high"},
             lmstudio_reasoning_options=None,
         )
-        assert kw["reasoning_effort"] == "high"
+        assert kw["reasoning_effort"] == "xhigh"
+
+    def test_extra_high_maps_to_xhigh_when_allowed(self, transport):
+        kw = transport.build_kwargs(
+            model="gpt-oss", messages=[{"role": "user", "content": "Hi"}],
+            is_lmstudio=True,
+            supports_reasoning=True,
+            reasoning_config={"effort": "extra_high"},
+            lmstudio_reasoning_options=["off", "low", "medium", "high", "xhigh"],
+        )
+        assert kw["reasoning_effort"] == "xhigh"
 
 
 class TestChatCompletionsValidate:

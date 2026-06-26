@@ -19,11 +19,10 @@ import { $activeSessionId, setCurrentFastMode, setCurrentReasoningEffort } from 
 // Hermes' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
 // by the Thinking toggle, not the radio.
 const EFFORT_OPTIONS = [
-  { value: 'minimal', labelKey: 'minimal' },
   { value: 'low', labelKey: 'low' },
   { value: 'medium', labelKey: 'medium' },
   { value: 'high', labelKey: 'high' },
-  { value: 'xhigh', labelKey: 'max' }
+  { value: 'extra_high', labelKey: 'extraHigh' }
 ] as const
 
 /** How "fast" is achieved for a given model — two different mechanisms:
@@ -234,10 +233,17 @@ function isThinkingEnabled(effort: string): boolean {
 
 function normalizeEffort(effort: string): string {
   const value = (effort || 'medium').trim().toLowerCase()
+  const squashed = value.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
 
   // Thinking off → no effort selected in the radio group.
   if (value === 'none') {
     return ''
+  }
+  if (value === 'minimal' || squashed === 'minimum') {
+    return 'low'
+  }
+  if (['xhigh', 'x high', 'extra high', 'max', 'maximum'].includes(squashed)) {
+    return 'extra_high'
   }
 
   return EFFORT_OPTIONS.some(option => option.value === value) ? value : 'medium'

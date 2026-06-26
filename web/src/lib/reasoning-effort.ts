@@ -4,9 +4,9 @@
  * Kept DOM-free so the node-environment vitest harness can cover the
  * resolution logic without loading React or the UI kit.
  *
- * Values mirror hermes_constants.VALID_REASONING_EFFORTS plus `none`
- * (thinking-off). An empty/unset config value means the Hermes default,
- * which is `medium`.
+ * Selectable values mirror hermes_constants.VALID_REASONING_EFFORTS plus
+ * `none` (thinking-off). Legacy values are accepted by normalizeEffort() for
+ * existing configs but are not surfaced in the picker.
  */
 
 export interface EffortOption {
@@ -16,11 +16,10 @@ export interface EffortOption {
 
 export const EFFORT_OPTIONS: ReadonlyArray<EffortOption> = [
   { value: "none", label: "Off (no thinking)" },
-  { value: "minimal", label: "Minimal" },
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-  { value: "xhigh", label: "Max" },
+  { value: "extra_high", label: "Extra High" },
 ];
 
 export const VALID_EFFORTS: ReadonlySet<string> = new Set(
@@ -32,5 +31,10 @@ export const VALID_EFFORTS: ReadonlySet<string> = new Set(
 export function normalizeEffort(raw: unknown): string {
   const value = String(raw ?? "").trim().toLowerCase();
   if (!value) return "medium";
+  const squashed = value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  if (value === "minimal" || squashed === "minimum") return "low";
+  if (["xhigh", "x high", "extra high", "max", "maximum"].includes(squashed)) {
+    return "extra_high";
+  }
   return VALID_EFFORTS.has(value) ? value : "medium";
 }

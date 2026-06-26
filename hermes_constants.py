@@ -548,24 +548,73 @@ def apply_subprocess_home_env(env: dict[str, str]) -> None:
         env["HOME"] = home
 
 
-VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh")
+VALID_REASONING_EFFORTS = ("low", "medium", "high", "extra_high")
+
+_REASONING_EFFORT_ALIASES = {
+    "low": "low",
+    "minimal": "low",
+    "minimum": "low",
+    "medium": "medium",
+    "med": "medium",
+    "high": "high",
+    "extra high": "extra_high",
+    "extra_high": "extra_high",
+    "extra-high": "extra_high",
+    "xhigh": "extra_high",
+    "x high": "extra_high",
+    "x-high": "extra_high",
+    "max": "extra_high",
+    "maximum": "extra_high",
+}
+
+_REASONING_EFFORT_LABELS = {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "extra_high": "Extra High",
+}
+
+
+def canonicalize_reasoning_effort(effort: str) -> str | None:
+    """Return Hermes' canonical reasoning effort value, or None.
+
+    Hermes stores and routes the official GPT-5.5/Codex effort set as
+    ``low``, ``medium``, ``high``, and ``extra_high``. Legacy UI/config
+    spellings are accepted as aliases for compatibility, but are never
+    advertised as selectable effort levels.
+    """
+    if not effort or not str(effort).strip():
+        return None
+    raw = str(effort).strip().lower()
+    squashed = " ".join(raw.replace("_", " ").replace("-", " ").split())
+    return _REASONING_EFFORT_ALIASES.get(raw) or _REASONING_EFFORT_ALIASES.get(squashed)
+
+
+def reasoning_effort_display_label(effort: str) -> str:
+    """Return the user-facing label for a reasoning effort value."""
+    canonical = canonicalize_reasoning_effort(effort)
+    if canonical:
+        return _REASONING_EFFORT_LABELS[canonical]
+    return str(effort or "").strip()
 
 
 def parse_reasoning_effort(effort: str) -> dict | None:
     """Parse a reasoning effort level into a config dict.
 
-    Valid levels: "none", "minimal", "low", "medium", "high", "xhigh".
+    Official effort levels: "low", "medium", "high", "extra_high".
+    Compatibility aliases: "minimal" → "low", "xhigh"/"max" → "extra_high".
     Returns None when the input is empty or unrecognized (caller uses default).
     Returns {"enabled": False} for "none".
-    Returns {"enabled": True, "effort": <level>} for valid effort levels.
+    Returns {"enabled": True, "effort": <canonical level>} for valid levels.
     """
     if not effort or not effort.strip():
         return None
     effort = effort.strip().lower()
     if effort == "none":
         return {"enabled": False}
-    if effort in VALID_REASONING_EFFORTS:
-        return {"enabled": True, "effort": effort}
+    canonical = canonicalize_reasoning_effort(effort)
+    if canonical in VALID_REASONING_EFFORTS:
+        return {"enabled": True, "effort": canonical}
     return None
 
 

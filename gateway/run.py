@@ -4050,9 +4050,10 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
     def _load_reasoning_config() -> dict | None:
         """Load reasoning effort from config.yaml.
 
-        Reads agent.reasoning_effort from config.yaml. Valid: "none",
-        "minimal", "low", "medium", "high", "xhigh". Returns None to use
-        default (medium).
+        Reads agent.reasoning_effort from config.yaml. Official effort values
+        are "low", "medium", "high", and "extra_high"; legacy aliases are
+        normalized by parse_reasoning_effort(). Returns None to use default
+        (medium).
         """
         from hermes_constants import parse_reasoning_effort
         cfg = _load_gateway_runtime_config()

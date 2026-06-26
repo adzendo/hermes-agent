@@ -1834,11 +1834,10 @@ export const zhHant = defineLocale({
       thinking: '思考',
       fast: '快速',
       effort: '推理強度',
-      minimal: '最小',
       low: '低',
       medium: '中',
       high: '高',
-      max: '最高',
+      extraHigh: '特高',
       updateFailed: '模型選項更新失敗',
       fastFailed: '快速模式更新失敗'
     },

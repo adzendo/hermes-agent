@@ -3878,21 +3878,28 @@ def _set_reasoning_effort(config, effort: str) -> None:
 
 def _prompt_reasoning_effort_selection(efforts, current_effort=""):
     """Prompt for a reasoning effort. Returns effort, 'none', or None to keep current."""
+    from hermes_constants import canonicalize_reasoning_effort, reasoning_effort_display_label
+
     deduped = list(
         dict.fromkeys(
-            str(effort).strip().lower() for effort in efforts if str(effort).strip()
+            canonicalize_reasoning_effort(str(effort))
+            for effort in efforts
+            if canonicalize_reasoning_effort(str(effort))
         )
     )
-    canonical_order = ("minimal", "low", "medium", "high", "xhigh")
+    canonical_order = ("low", "medium", "high", "extra_high")
     ordered = [effort for effort in canonical_order if effort in deduped]
     ordered.extend(effort for effort in deduped if effort not in canonical_order)
     if not ordered:
         return None
 
+    current_effort = canonicalize_reasoning_effort(str(current_effort)) or str(current_effort or "").strip().lower()
+
     def _label(effort):
+        label = reasoning_effort_display_label(effort)
         if effort == current_effort:
-            return f"{effort}  ← currently in use"
-        return effort
+            return f"{label}  ← currently in use"
+        return label
 
     disable_label = "Disable reasoning"
     skip_label = "Skip (keep current)"

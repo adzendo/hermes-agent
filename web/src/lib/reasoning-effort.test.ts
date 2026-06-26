@@ -13,20 +13,26 @@ describe("normalizeEffort", () => {
     expect(normalizeEffort("   ")).toBe("medium");
   });
 
-  it("passes through every valid effort level", () => {
-    for (const level of ["none", "minimal", "low", "medium", "high", "xhigh"]) {
+  it("passes through every official effort level plus thinking-off", () => {
+    for (const level of ["none", "low", "medium", "high", "extra_high"]) {
       expect(normalizeEffort(level)).toBe(level);
     }
   });
 
+  it("normalizes legacy aliases without surfacing them as selectable values", () => {
+    expect(normalizeEffort("minimal")).toBe("low");
+    expect(normalizeEffort("  XHigh  ")).toBe("extra_high");
+    expect(normalizeEffort("extra high")).toBe("extra_high");
+    expect(normalizeEffort("max")).toBe("extra_high");
+  });
+
   it("is case- and whitespace-insensitive", () => {
     expect(normalizeEffort("HIGH")).toBe("high");
-    expect(normalizeEffort("  XHigh  ")).toBe("xhigh");
+    expect(normalizeEffort("  Extra High  ")).toBe("extra_high");
   });
 
   it("falls back to medium for unknown values", () => {
     expect(normalizeEffort("turbo")).toBe("medium");
-    expect(normalizeEffort("max")).toBe("medium"); // 'max' is a label, not a value
     expect(normalizeEffort(42)).toBe("medium");
   });
 });
@@ -38,11 +44,13 @@ describe("EFFORT_OPTIONS", () => {
     }
   });
 
-  it("covers the real reasoning levels plus thinking-off", () => {
-    // Invariant against hermes_constants.VALID_REASONING_EFFORTS + 'none'.
-    const values = new Set(EFFORT_OPTIONS.map((o) => o.value));
-    for (const level of ["none", "minimal", "low", "medium", "high", "xhigh"]) {
-      expect(values.has(level)).toBe(true);
-    }
+  it("surfaces only thinking-off plus the official GPT-5.5 effort levels", () => {
+    expect(EFFORT_OPTIONS).toEqual([
+      { value: "none", label: "Off (no thinking)" },
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "extra_high", label: "Extra High" },
+    ]);
   });
 });

@@ -1771,11 +1771,10 @@ export const en: Translations = {
       thinking: 'Thinking',
       fast: 'Fast',
       effort: 'Effort',
-      minimal: 'Minimal',
       low: 'Low',
       medium: 'Medium',
       high: 'High',
-      max: 'Max',
+      extraHigh: 'Extra High',
       updateFailed: 'Model option update failed',
       fastFailed: 'Fast mode update failed'
     },

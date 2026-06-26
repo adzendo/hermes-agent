@@ -28,17 +28,27 @@ import { CONTROL_TEXT } from './constants'
 import { getNested, setNested } from './helpers'
 import { ListRow, LoadingState, Pill, SectionHeading } from './primitives'
 
-// Hermes' reasoning levels (VALID_REASONING_EFFORTS); `none` = thinking off.
-// Empty config = Hermes default (medium), shown as Medium.
-const EFFORT_VALUES = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const
+// Hermes' official GPT-5.5/Codex reasoning levels
+// (hermes_constants.VALID_REASONING_EFFORTS). Legacy aliases normalize for
+// existing configs, but only canonical provider-accepted choices are displayed.
+const EFFORT_VALUES = ['low', 'medium', 'high', 'extra_high'] as const
+type EffortValue = (typeof EFFORT_VALUES)[number]
 
 // agent.service_tier stores "fast"/"priority"/"on" for fast; anything else is
 // normal (mirrors tui_gateway _load_service_tier).
 const isFastTier = (tier: unknown): boolean =>
   ['fast', 'priority', 'on'].includes(String(tier ?? '').trim().toLowerCase())
 
-// Reuse the composer's effort labels (`xhigh` shows as "Max", else 1:1).
-const effortLabelKey = (v: string) => (v === 'xhigh' ? 'max' : v) as 'high' | 'low' | 'max' | 'medium' | 'minimal'
+const normalizeEffortValue = (raw: unknown): EffortValue => {
+  const value = String(raw ?? '').trim().toLowerCase()
+  if (!value) return 'medium'
+  const squashed = value.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (value === 'minimal' || squashed === 'minimum') return 'low'
+  if (['xhigh', 'x high', 'extra high', 'max', 'maximum'].includes(squashed)) return 'extra_high'
+  return (EFFORT_VALUES as readonly string[]).includes(value) ? (value as EffortValue) : 'medium'
+}
+
+const effortLabelKey = (v: EffortValue) => (v === 'extra_high' ? 'extraHigh' : v)
 
 // A provider row is "ready" to pick a model from when it reports models. The
 // backend now surfaces the full `hermes model` universe (every canonical
@@ -282,7 +292,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
 
   const reasoningSupported = mainCaps?.reasoning ?? true
   const fastSupported = mainCaps?.fast ?? false
-  const effortValue = String(getNested(config ?? {}, 'agent.reasoning_effort') ?? '').trim().toLowerCase() || 'medium'
+  const effortValue = normalizeEffortValue(getNested(config ?? {}, 'agent.reasoning_effort'))
   const fastOn = isFastTier(getNested(config ?? {}, 'agent.service_tier'))
 
   // Persist a single agent.* default by round-tripping the whole config record
@@ -572,7 +582,7 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
                   <SelectContent>
                     {EFFORT_VALUES.map(value => (
                       <SelectItem key={value} value={value}>
-                        {value === 'none' ? m.reasoningOff : t.shell.modelOptions[effortLabelKey(value)]}
+                        {t.shell.modelOptions[effortLabelKey(value)]}
                       </SelectItem>
                     ))}
                   </SelectContent>

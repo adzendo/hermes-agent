@@ -51,6 +51,18 @@ function renderSubmenu(opts: { fastControl: FastControl; reasoning: boolean; req
 // preset-only — the gateway's config.set falls back to global config when no
 // session matches, so it must not be called. (Caught in the second review.)
 describe('ModelEditSubmenu no-session guard', () => {
+  it('reasoning: shows only the official GPT-5.5 effort levels', () => {
+    const requestGateway = vi.fn().mockResolvedValue({})
+    renderSubmenu({ fastControl: { kind: 'none' }, reasoning: true, requestGateway })
+
+    expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Max')).toBeNull()
+    expect(screen.queryByText('Low')).not.toBeNull()
+    expect(screen.queryByText('Medium')).not.toBeNull()
+    expect(screen.queryByText('High')).not.toBeNull()
+    expect(screen.queryByText('Extra High')).not.toBeNull()
+  })
+
   it('param fast: records the preset but skips the gateway without a session', () => {
     const requestGateway = vi.fn().mockResolvedValue({})
     renderSubmenu({ fastControl: { kind: 'param', on: false }, reasoning: false, requestGateway })

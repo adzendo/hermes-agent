@@ -319,9 +319,8 @@ def test_build_api_kwargs_codex(monkeypatch):
 def test_build_api_kwargs_codex_clamps_minimal_effort(monkeypatch):
     """'minimal' reasoning effort is clamped to 'low' on the Responses API.
 
-    GPT-5.4 supports none/low/medium/high/xhigh but NOT 'minimal'.
-    Users may configure 'minimal' via OpenRouter conventions, so the Codex
-    Responses path must clamp it to the nearest supported level.
+    Legacy configs may still contain 'minimal', so the Codex Responses path must
+    clamp it to the nearest official GPT-5.5/Codex level.
     """
     _patch_agent_bootstrap(monkeypatch)
 
@@ -350,10 +349,10 @@ def test_build_api_kwargs_codex_clamps_minimal_effort(monkeypatch):
 
 
 def test_build_api_kwargs_codex_preserves_supported_efforts(monkeypatch):
-    """Effort levels natively supported by the Responses API pass through unchanged."""
+    """Official GPT-5.5/Codex effort levels pass through unchanged."""
     _patch_agent_bootstrap(monkeypatch)
 
-    for effort in ("low", "medium", "high", "xhigh"):
+    for effort in ("low", "medium", "high", "extra_high"):
         agent = run_agent.AIAgent(
             model="gpt-5-codex",
             base_url="https://chatgpt.com/backend-api/codex",
@@ -375,6 +374,33 @@ def test_build_api_kwargs_codex_preserves_supported_efforts(monkeypatch):
             ]
         )
         assert kwargs["reasoning"]["effort"] == effort, f"{effort} should pass through unchanged"
+
+
+def test_build_api_kwargs_codex_normalizes_legacy_xhigh(monkeypatch):
+    """Legacy xhigh aliases to canonical extra_high before hitting Codex."""
+    _patch_agent_bootstrap(monkeypatch)
+
+    agent = run_agent.AIAgent(
+        model="gpt-5-codex",
+        base_url="https://chatgpt.com/backend-api/codex",
+        api_key="codex-token",
+        quiet_mode=True,
+        max_iterations=4,
+        skip_context_files=True,
+        skip_memory=True,
+        reasoning_config={"enabled": True, "effort": "xhigh"},
+    )
+    agent._cleanup_task_resources = lambda task_id: None
+    agent._persist_session = lambda messages, history=None: None
+    agent._save_trajectory = lambda messages, user_message, completed: None
+
+    kwargs = agent._build_api_kwargs(
+        [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+    )
+    assert kwargs["reasoning"]["effort"] == "extra_high"
 
 
 def test_build_api_kwargs_copilot_responses_omits_openai_only_fields(monkeypatch):

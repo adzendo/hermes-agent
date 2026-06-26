@@ -1,10 +1,15 @@
 const REASONING_LABELS: Record<string, string> = {
   none: 'Off',
-  minimal: 'Min',
+  minimal: 'Low',
   low: 'Low',
   medium: 'Med',
   high: 'High',
-  xhigh: 'Max'
+  xhigh: 'Extra High',
+  'x high': 'Extra High',
+  'extra high': 'Extra High',
+  extra_high: 'Extra High',
+  'extra-high': 'Extra High',
+  max: 'Extra High'
 }
 
 export function reasoningEffortLabel(effort: string): string {

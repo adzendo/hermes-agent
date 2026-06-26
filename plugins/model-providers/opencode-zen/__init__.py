@@ -68,8 +68,10 @@ class OpenCodeGoProfile(ProviderProfile):
                 extra_body["thinking"] = {"type": "disabled"}
                 return extra_body, top_level
 
-            effort = (reasoning_config.get("effort") or "").strip().lower()
-            if effort in {"xhigh", "max"}:
+            from hermes_constants import canonicalize_reasoning_effort
+
+            effort = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
+            if effort == "extra_high":
                 top_level["reasoning_effort"] = "high"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort
@@ -92,8 +94,10 @@ class OpenCodeGoProfile(ProviderProfile):
             return extra_body, top_level
 
         if isinstance(reasoning_config, dict):
-            effort = (reasoning_config.get("effort") or "").strip().lower()
-            if effort in {"xhigh", "max"}:
+            from hermes_constants import canonicalize_reasoning_effort
+
+            effort = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
+            if effort == "extra_high":
                 top_level["reasoning_effort"] = "max"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort

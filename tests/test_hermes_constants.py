@@ -306,7 +306,10 @@ class TestParseReasoningEffort:
             ("MEDIUM", "medium"),
             ("High", "high"),
             ("  low  ", "low"),
-            ("\tXHIGH\n", "xhigh"),
+            ("\tXHIGH\n", "extra_high"),
+            ("Extra High", "extra_high"),
+            ("minimal", "low"),
+            ("max", "extra_high"),
             ("None", False),
         ],
     )
@@ -320,21 +323,19 @@ class TestParseReasoningEffort:
 
     @pytest.mark.parametrize(
         "value",
-        ["bogus", "very-high", "max", "0", "off", "true", "default"],
+        ["bogus", "very-high", "0", "off", "true", "default"],
     )
     def test_unknown_levels_return_none(self, value):
         """Unrecognized strings fall back to the caller default (None)."""
         assert parse_reasoning_effort(value) is None
 
     def test_known_supported_levels_are_documented(self):
-        """Guard against silently dropping a documented level.
+        """Guard against silently changing the canonical effort enum.
 
-        The docstring promises "minimal", "low", "medium", "high", "xhigh".
-        If someone removes one from VALID_REASONING_EFFORTS without updating
-        the docstring, this test will fail and force the call out.
+        The official GPT-5.5/Codex effort set is Low, Medium, High, Extra High.
+        Legacy aliases may parse, but must not be part of the canonical enum.
         """
-        documented = {"minimal", "low", "medium", "high", "xhigh"}
-        assert documented.issubset(set(VALID_REASONING_EFFORTS))
+        assert VALID_REASONING_EFFORTS == ("low", "medium", "high", "extra_high")
 
 
 class TestSecureParentDir:

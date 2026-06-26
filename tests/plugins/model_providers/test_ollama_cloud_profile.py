@@ -3,8 +3,9 @@
 Ollama Cloud's ``/v1/chat/completions`` endpoint supports top-level
 ``reasoning_effort`` with values ``none``, ``low``, ``medium``, ``high``,
 and (undocumented but empirically confirmed) ``max``.  The profile maps
-Hermes's ``xhigh`` → ``max`` to unlock DeepSeek V4's "Max thinking" tier
-and passes the standard levels through unchanged.
+This profile maps Hermes's canonical ``extra_high`` → ``max`` to unlock
+DeepSeek V4's "Max thinking" tier and passes the standard levels through
+unchanged. Legacy ``xhigh`` / ``max`` aliases still normalize to ``max``.
 
 These tests pin the profile's wire-shape contract so Ollama Cloud
 requests carry the correct ``reasoning_effort`` field.
@@ -36,9 +37,9 @@ def ollama_cloud_profile():
 class TestOllamaCloudReasoningEffort:
     """``build_api_kwargs_extras`` emits correct top-level ``reasoning_effort``."""
 
-    # ── xhigh / max → max ──────────────────────────────────────────
+    # ── extra_high / legacy aliases → max ──────────────────────────
 
-    @pytest.mark.parametrize("effort", ["xhigh", "max", "MAX", "  Max  "])
+    @pytest.mark.parametrize("effort", ["extra_high", "Extra High", "xhigh", "max", "MAX", "  Max  "])
     def test_xhigh_and_max_normalize_to_max(self, ollama_cloud_profile, effort):
         extra_body, top_level = ollama_cloud_profile.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": effort},
@@ -102,19 +103,19 @@ class TestOllamaCloudReasoningEffort:
         )
         assert top_level == {}
 
-    # ── unknown effort → forwarded as-is ───────────────────────────
+    # ── unknown effort → omitted (only provider-accepted values may leave Hermes)
 
-    def test_unknown_effort_forwarded(self, ollama_cloud_profile):
+    def test_unknown_effort_omitted(self, ollama_cloud_profile):
         _, top_level = ollama_cloud_profile.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": "ultra"},
         )
-        assert top_level == {"reasoning_effort": "ultra"}
+        assert top_level == {}
 
 
 class TestOllamaCloudFullKwargsIntegration:
     """End-to-end: the transport's full kwargs include reasoning_effort."""
 
-    def test_full_kwargs_with_xhigh(self, ollama_cloud_profile):
+    def test_full_kwargs_with_extra_high(self, ollama_cloud_profile):
         from agent.transports.chat_completions import ChatCompletionsTransport
 
         kwargs = ChatCompletionsTransport().build_kwargs(
@@ -122,7 +123,7 @@ class TestOllamaCloudFullKwargsIntegration:
             messages=[{"role": "user", "content": "ping"}],
             tools=None,
             provider_profile=ollama_cloud_profile,
-            reasoning_config={"enabled": True, "effort": "xhigh"},
+            reasoning_config={"enabled": True, "effort": "extra_high"},
             base_url="https://ollama.com/v1",
             provider_name="ollama-cloud",
         )

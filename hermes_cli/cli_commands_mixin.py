@@ -2413,13 +2413,14 @@ class CLICommandsMixin:
 
         Usage:
             /reasoning              Show current effort level and display state
-            /reasoning <level>      Set reasoning effort (none, minimal, low, medium, high, xhigh)
+            /reasoning <level>      Set reasoning effort (low, medium, high, extra high)
             /reasoning show|on      Show model thinking/reasoning in output
             /reasoning hide|off     Hide model thinking/reasoning from output
             /reasoning full         Show complete thinking (no 10-line clamp)
             /reasoning clamp        Collapse long thinking to the first 10 lines
         """
         from cli import _ACCENT, _DIM, _RST, _cprint, _parse_reasoning_config, save_config_value
+        from hermes_constants import reasoning_effort_display_label
         parts = cmd.strip().split(maxsplit=1)
 
         if len(parts) < 2:
@@ -2430,12 +2431,12 @@ class CLICommandsMixin:
             elif rc.get("enabled") is False:
                 level = "none (disabled)"
             else:
-                level = rc.get("effort", "medium")
+                level = reasoning_effort_display_label(rc.get("effort", "medium"))
             display_state = "on ✓" if self.show_reasoning else "off"
             full_state = "full" if getattr(self, "reasoning_full", False) else "clamped to 10 lines"
             _cprint(f"  {_ACCENT}Reasoning effort:  {level}{_RST}")
             _cprint(f"  {_ACCENT}Reasoning display: {display_state} ({full_state}){_RST}")
-            _cprint(f"  {_DIM}Usage: /reasoning <none|minimal|low|medium|high|xhigh|show|hide|full|clamp>{_RST}")
+            _cprint(f"  {_DIM}Usage: /reasoning <low|medium|high|extra high|show|hide|full|clamp>{_RST}")
             return
 
         arg = parts[1].strip().lower()
@@ -2476,17 +2477,24 @@ class CLICommandsMixin:
         parsed = _parse_reasoning_config(arg)
         if parsed is None:
             _cprint(f"  {_DIM}(._.) Unknown argument: {arg}{_RST}")
-            _cprint(f"  {_DIM}Valid levels: none, minimal, low, medium, high, xhigh{_RST}")
+            _cprint(f"  {_DIM}Valid levels: low, medium, high, extra high{_RST}")
             _cprint(f"  {_DIM}Display:      show, hide{_RST}")
             return
 
         self.reasoning_config = parsed
         self.agent = None  # Force agent re-init with new reasoning config
 
-        if save_config_value("agent.reasoning_effort", arg):
-            _cprint(f"  {_ACCENT}✓ Reasoning effort set to '{arg}' (saved to config){_RST}")
+        if parsed.get("enabled") is False:
+            stored_effort = "none"
+            display_effort = "none (disabled)"
         else:
-            _cprint(f"  {_ACCENT}✓ Reasoning effort set to '{arg}' (session only){_RST}")
+            stored_effort = parsed.get("effort", "medium")
+            display_effort = reasoning_effort_display_label(stored_effort)
+
+        if save_config_value("agent.reasoning_effort", stored_effort):
+            _cprint(f"  {_ACCENT}✓ Reasoning effort set to '{display_effort}' (saved to config){_RST}")
+        else:
+            _cprint(f"  {_ACCENT}✓ Reasoning effort set to '{display_effort}' (session only){_RST}")
 
     def _handle_busy_command(self, cmd: str):
         """Handle /busy — control what Enter does while Hermes is working.

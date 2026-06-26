@@ -82,7 +82,7 @@ Skill conflicts are handled by `--skill-conflict`: `skip` leaves the existing He
 |------|---------------------|-------------------|---------|
 | Max turns | `agents.defaults.timeoutSeconds` | `agent.max_turns` | `timeoutSeconds / 10`, capped at 200 |
 | Verbose mode | `agents.defaults.verboseDefault` | `agent.verbose` | "off" / "on" / "full" |
-| Reasoning effort | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | "always"/"high"/"xhigh" → "high", "auto"/"medium"/"adaptive" → "medium", "off"/"low"/"none"/"minimal" → "low" |
+| Reasoning effort | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | "always"/"xhigh"/"max" → "extra_high", "high" → "high", "auto"/"medium"/"adaptive" → "medium", "off"/"low"/"none"/"minimal" → "low" |
 | Compression | `agents.defaults.compaction.mode` | `compression.enabled` | "off" → false, anything else → true |
 | Compression model | `agents.defaults.compaction.model` | `compression.summary_model` | Direct string copy |
 | Human delay | `agents.defaults.humanDelay.mode` | `human_delay.mode` | "natural" / "custom" / "off" |

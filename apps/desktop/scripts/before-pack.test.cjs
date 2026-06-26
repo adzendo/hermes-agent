@@ -4,7 +4,43 @@ const os = require('node:os')
 const path = require('node:path')
 const test = require('node:test')
 
-const { cleanStaleAppOutDir } = require('../scripts/before-pack.cjs')
+const {
+  MAIN_BACKUP_BASENAME,
+  bundleElectronMainForPack,
+  cleanStaleAppOutDir,
+  restoreElectronMainAfterPack
+} = require('../scripts/before-pack.cjs')
+
+function withTempDesktopRoot(fn) {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-before-pack-root-'))
+  const cleanup = () => fs.rmSync(tempRoot, { recursive: true, force: true })
+  try {
+    const electronDir = path.join(tempRoot, 'electron')
+    const scriptsDir = path.join(tempRoot, 'scripts')
+    fs.mkdirSync(electronDir, { recursive: true })
+    fs.mkdirSync(scriptsDir, { recursive: true })
+    fs.writeFileSync(path.join(electronDir, 'main.cjs'), "module.exports = 'source'\n", 'utf8')
+    fs.writeFileSync(
+      path.join(scriptsDir, 'bundle-electron-main.mjs'),
+      [
+        "import fs from 'node:fs'",
+        "import path from 'node:path'",
+        "const main = path.resolve(process.cwd(), 'electron/main.cjs')",
+        "fs.writeFileSync(main, \"module.exports = 'bundled'\\n\", 'utf8')"
+      ].join('\n'),
+      'utf8'
+    )
+    const result = fn(tempRoot)
+    if (result && typeof result.then === 'function') {
+      return result.finally(cleanup)
+    }
+    cleanup()
+    return result
+  } catch (err) {
+    cleanup()
+    throw err
+  }
+}
 
 test('cleanStaleAppOutDir removes a populated unpacked directory', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-before-pack-'))
@@ -44,10 +80,35 @@ test('cleanStaleAppOutDir ignores empty or invalid input', () => {
   assert.equal(cleanStaleAppOutDir(42), false)
 })
 
-test('beforePack default export resolves even when cleanup throws', async () => {
+test('bundleElectronMainForPack backs up source and runs the bundler', () => {
+  withTempDesktopRoot(root => {
+    const main = path.join(root, 'electron', 'main.cjs')
+    const backup = path.join(root, 'electron', MAIN_BACKUP_BASENAME)
+
+    assert.equal(bundleElectronMainForPack(root), true)
+
+    assert.match(fs.readFileSync(main, 'utf8'), /bundled/)
+    assert.match(fs.readFileSync(backup, 'utf8'), /source/)
+  })
+})
+
+test('restoreElectronMainAfterPack restores the source main and removes backup', () => {
+  withTempDesktopRoot(root => {
+    const main = path.join(root, 'electron', 'main.cjs')
+    const backup = path.join(root, 'electron', MAIN_BACKUP_BASENAME)
+
+    assert.equal(bundleElectronMainForPack(root), true)
+    assert.equal(restoreElectronMainAfterPack(root), true)
+
+    assert.match(fs.readFileSync(main, 'utf8'), /source/)
+    assert.equal(fs.existsSync(backup), false)
+  })
+})
+
+test('beforePack default export resolves with a temp desktop root', async () => {
   const { default: beforePack } = require('../scripts/before-pack.cjs')
-  // A directory path that rmSync can't remove is simulated by passing a
-  // context whose appOutDir is a file the hook will try (and be allowed) to
-  // remove; the contract under test is that the hook never rejects.
-  await assert.doesNotReject(beforePack({ appOutDir: '', electronPlatformName: 'linux' }))
+  await withTempDesktopRoot(async root => {
+    await assert.doesNotReject(beforePack({ appOutDir: '', desktopRoot: root, electronPlatformName: 'linux' }))
+    assert.match(fs.readFileSync(path.join(root, 'electron', 'main.cjs'), 'utf8'), /bundled/)
+  })
 })

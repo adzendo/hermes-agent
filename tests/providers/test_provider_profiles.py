@@ -229,7 +229,7 @@ class TestOpenRouterProfile:
         p = get_provider_profile("openrouter")
         for cfg in (
             {"enabled": True, "effort": "medium"},
-            {"enabled": True, "effort": "xhigh"},
+            {"enabled": True, "effort": "extra_high"},
             {"effort": "high"},
             {"enabled": True},
         ):
@@ -312,20 +312,29 @@ class TestOpenRouterProfile:
         """effort set + reasoning enabled → top-level verbosity == effort,
         and NO reasoning field in extra_body.
 
-        Covers the full real config range produced by
-        ``hermes_constants.parse_reasoning_effort`` —
-        ``VALID_REASONING_EFFORTS = (minimal, low, medium, high, xhigh)``.
+        Covers the full canonical config range produced by
+        ``hermes_constants.parse_reasoning_effort``. OpenRouter's Anthropic
+        verbosity endpoint only accepts up to ``high``, so Hermes clamps
+        canonical ``extra_high`` to ``high`` before transit.
         """
         p = get_provider_profile("openrouter")
         model = "anthropic/claude-fable-5"
         assert self._is_mandatory(model)  # fixture really is mandatory
-        for effort in ("minimal", "low", "medium", "high", "xhigh"):
+        expected = {
+            "minimal": "low",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "extra_high": "high",
+            "xhigh": "high",
+        }
+        for effort, wire_effort in expected.items():
             eb, tl = p.build_api_kwargs_extras(
                 reasoning_config={"enabled": True, "effort": effort},
                 supports_reasoning=True,
                 model=model,
             )
-            assert tl["verbosity"] == effort, (effort, tl)
+            assert tl["verbosity"] == wire_effort, (effort, tl)
             assert "reasoning" not in eb, (effort, eb)
 
     def test_mandatory_anthropic_effort_without_enabled_key_routes(self):
@@ -333,29 +342,29 @@ class TestOpenRouterProfile:
         verbosity (enabled defaults to True)."""
         p = get_provider_profile("openrouter")
         eb, tl = p.build_api_kwargs_extras(
-            reasoning_config={"effort": "xhigh"},
+            reasoning_config={"effort": "extra_high"},
             supports_reasoning=True,
             model="anthropic/claude-fable-5",
         )
-        assert tl["verbosity"] == "xhigh"
+        assert tl["verbosity"] == "high"
         assert "reasoning" not in eb
 
-    def test_mandatory_anthropic_verbosity_is_value_agnostic_passthrough(self):
-        """The mapping passes the effort value through verbatim — it must NOT
-        clamp or whitelist. ``xhigh`` is a real config value; ``max`` is not
-        producible by ``parse_reasoning_effort`` today but OpenRouter accepts it
-        for Claude (live-proven in #43432), so a forward value must survive
-        rather than be silently dropped. The OpenAI SDK type only literals
-        ``low|medium|high`` but it's a TypedDict (no runtime validation), so the
-        extended scale reaches the wire untouched."""
+    def test_mandatory_anthropic_verbosity_rejects_unknown_and_clamps_aliases(self):
+        """Only provider-accepted verbosity values leave Hermes."""
         p = get_provider_profile("openrouter")
-        for effort in ("xhigh", "max"):
+        for effort in ("extra_high", "xhigh", "max"):
             _, tl = p.build_api_kwargs_extras(
                 reasoning_config={"enabled": True, "effort": effort},
                 supports_reasoning=True,
                 model="anthropic/claude-fable-5",
             )
-            assert tl["verbosity"] == effort
+            assert tl["verbosity"] == "high"
+        _, tl = p.build_api_kwargs_extras(
+            reasoning_config={"enabled": True, "effort": "ultra"},
+            supports_reasoning=True,
+            model="anthropic/claude-fable-5",
+        )
+        assert "verbosity" not in tl
 
     def test_mandatory_anthropic_no_verbosity_when_effort_absent(self):
         """No effort / none / disabled → no verbosity emitted, so the model

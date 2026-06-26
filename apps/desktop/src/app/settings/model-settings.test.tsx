@@ -13,6 +13,8 @@ beforeAll(() => {
 const getGlobalModelInfo = vi.fn()
 const getGlobalModelOptions = vi.fn()
 const getAuxiliaryModels = vi.fn()
+const getMoaModels = vi.fn()
+const saveMoaModels = vi.fn()
 const setModelAssignment = vi.fn()
 const getRecommendedDefaultModel = vi.fn()
 const setEnvVar = vi.fn()
@@ -24,6 +26,8 @@ vi.mock('@/hermes', () => ({
   getGlobalModelInfo: () => getGlobalModelInfo(),
   getGlobalModelOptions: () => getGlobalModelOptions(),
   getAuxiliaryModels: () => getAuxiliaryModels(),
+  getMoaModels: () => getMoaModels(),
+  saveMoaModels: (config: unknown) => saveMoaModels(config),
   setModelAssignment: (body: unknown) => setModelAssignment(body),
   getRecommendedDefaultModel: (slug: string) => getRecommendedDefaultModel(slug),
   setEnvVar: (key: string, value: string) => setEnvVar(key, value),
@@ -54,6 +58,8 @@ beforeEach(() => {
     main: { provider: 'nous', model: 'hermes-4' },
     tasks: [{ task: 'vision', provider: 'auto', model: '', base_url: '' }]
   })
+  getMoaModels.mockResolvedValue(null)
+  saveMoaModels.mockImplementation(async config => config)
   setModelAssignment.mockResolvedValue({ provider: 'nous', model: 'hermes-4', gateway_tools: [] })
   getRecommendedDefaultModel.mockResolvedValue({ provider: 'deepseek', model: 'deepseek-chat', free_tier: null })
   setEnvVar.mockResolvedValue({ ok: true })
@@ -85,10 +91,25 @@ describe('ModelSettings', () => {
     fireEvent.click(triggers[0])
 
     // "Nous" shows in both the trigger and the open list; the unconfigured
-    // provider + its setup hint are the unique signal of the full universe.
+    // provider being present is the unique signal of the full universe.
     expect((await screen.findAllByText('Nous')).length).toBeGreaterThan(0)
     expect(await screen.findByText(/DeepSeek/)).toBeTruthy()
-    expect(await screen.findByText(/set up/)).toBeTruthy()
+  })
+
+  it('shows only canonical GPT-5.5 reasoning defaults', async () => {
+    await renderModelSettings()
+    await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
+
+    const triggers = await screen.findAllByRole('combobox')
+    fireEvent.click(triggers[2])
+
+    expect((await screen.findAllByText('Low')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Medium')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('High')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Extra High')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Minimal')).toBeNull()
+    expect(screen.queryByText('Max')).toBeNull()
+    expect(screen.queryByText('Reasoning off')).toBeNull()
   })
 
   it('activates an unconfigured api_key provider inline by saving its key', async () => {

@@ -2356,7 +2356,9 @@ class GatewaySlashCommandsMixin:
             elif rc.get("enabled") is False:
                 level = t("gateway.reasoning.level_disabled")
             else:
-                level = rc.get("effort", "medium")
+                from hermes_constants import reasoning_effort_display_label
+
+                level = reasoning_effort_display_label(rc.get("effort", "medium"))
             display_state = (
                 t("gateway.reasoning.display_on")
                 if self._show_reasoning
@@ -2396,29 +2398,35 @@ class GatewaySlashCommandsMixin:
             self._reasoning_config = self._load_reasoning_config()
             self._evict_cached_agent(session_key)
             return t("gateway.reasoning.reset_done")
-        if effort == "none":
-            parsed = {"enabled": False}
-        elif effort in {"minimal", "low", "medium", "high", "xhigh"}:
-            parsed = {"enabled": True, "effort": effort}
-        else:
+        from hermes_constants import parse_reasoning_effort, reasoning_effort_display_label
+
+        parsed = parse_reasoning_effort(effort)
+        if parsed is None:
             return t(
                 "gateway.reasoning.unknown_arg",
                 arg=effort or raw_args.lower(),
             )
 
+        if parsed.get("enabled") is False:
+            stored_effort = "none"
+            display_effort = t("gateway.reasoning.level_disabled")
+        else:
+            stored_effort = parsed.get("effort", "medium")
+            display_effort = reasoning_effort_display_label(stored_effort)
+
         self._reasoning_config = parsed
         if persist_global:
-            if _save_config_key("agent.reasoning_effort", effort):
+            if _save_config_key("agent.reasoning_effort", stored_effort):
                 self._set_session_reasoning_override(session_key, None)
                 self._evict_cached_agent(session_key)
-                return t("gateway.reasoning.set_global", effort=effort)
+                return t("gateway.reasoning.set_global", effort=display_effort)
             self._set_session_reasoning_override(session_key, parsed)
             self._evict_cached_agent(session_key)
-            return t("gateway.reasoning.set_global_save_failed", effort=effort)
+            return t("gateway.reasoning.set_global_save_failed", effort=display_effort)
 
         self._set_session_reasoning_override(session_key, parsed)
         self._evict_cached_agent(session_key)
-        return t("gateway.reasoning.set_session", effort=effort)
+        return t("gateway.reasoning.set_session", effort=display_effort)
 
     async def _handle_memory_command(self, event: MessageEvent) -> str:
         """Handle /memory — review pending memory writes + toggle the approval gate.

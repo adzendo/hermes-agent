@@ -1895,11 +1895,10 @@ export const ja = defineLocale({
       thinking: '思考',
       fast: '高速',
       effort: '努力度',
-      minimal: '最小',
       low: '低',
       medium: '中',
       high: '高',
-      max: '最大',
+      extraHigh: '特高',
       updateFailed: 'モデルオプションの更新に失敗しました',
       fastFailed: '高速モードの更新に失敗しました'
     },
