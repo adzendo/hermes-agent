@@ -23,7 +23,12 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
-from agent.auxiliary_client import call_llm, _is_connection_error, aux_interrupt_protection
+from agent.auxiliary_client import (
+    call_llm,
+    _get_task_timeout,
+    _is_connection_error,
+    aux_interrupt_protection,
+)
 from agent.context_engine import ContextEngine
 from agent.model_metadata import (
     MINIMUM_CONTEXT_LENGTH,
@@ -33,6 +38,15 @@ from agent.model_metadata import (
 from agent.redact import redact_sensitive_text
 
 logger = logging.getLogger(__name__)
+
+# Large live compactions can hand the auxiliary summarizer a six-figure token
+# prompt.  A fixed 120s compression timeout worked for small smoke tests but
+# aborted real Telegram sessions around ~224K tokens before Codex GPT-5.5 could
+# finish.  Scale the timeout by prompt size while preserving any larger user
+# configured timeout, and cap it below the gateway's much larger run timeout.
+_COMPRESSION_SUMMARY_TIMEOUT_MIN_SECONDS = 120.0
+_COMPRESSION_SUMMARY_TIMEOUT_CAP_SECONDS = 600.0
+_COMPRESSION_SUMMARY_TIMEOUT_TOKENS_PER_SECOND = 500
 
 HISTORICAL_TASK_HEADING = "## Historical Task Snapshot"
 HISTORICAL_IN_PROGRESS_HEADING = "## Historical In-Progress State"
@@ -1450,6 +1464,33 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
         self.summary_model = ""  # empty = use main model
         self._summary_failure_cooldown_until = 0.0  # no cooldown — retry immediately
 
+    @staticmethod
+    def _summary_call_timeout(prompt: str) -> float:
+        """Return an adaptive timeout for the compression LLM call.
+
+        ``auxiliary.compression.timeout`` remains the operator-controlled floor,
+        but large compaction prompts need more than the 120s default.  Scale by
+        rough prompt tokens so six-figure-token Telegram sessions do not abort
+        solely because the configured timeout was sized for small smoke tests.
+        """
+        try:
+            configured = float(_get_task_timeout("compression"))
+        except Exception:
+            configured = _COMPRESSION_SUMMARY_TIMEOUT_MIN_SECONDS
+        if configured <= 0:
+            configured = _COMPRESSION_SUMMARY_TIMEOUT_MIN_SECONDS
+        try:
+            prompt_tokens = estimate_messages_tokens_rough([
+                {"role": "user", "content": prompt}
+            ])
+        except Exception:
+            prompt_tokens = 0
+        scaled = float(prompt_tokens) / float(_COMPRESSION_SUMMARY_TIMEOUT_TOKENS_PER_SECOND)
+        return min(
+            _COMPRESSION_SUMMARY_TIMEOUT_CAP_SECONDS,
+            max(_COMPRESSION_SUMMARY_TIMEOUT_MIN_SECONDS, configured, scaled),
+        )
+
     def _generate_summary(
         self,
         turns_to_summarize: List[Dict[str, Any]],
@@ -1655,7 +1696,7 @@ This compaction should PRIORITISE preserving all information related to the focu
                 },
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": int(summary_budget * 1.3),
-                # timeout resolved from auxiliary.compression.timeout config by call_llm
+                "timeout": self._summary_call_timeout(prompt),
             }
             if self.summary_model:
                 call_kwargs["model"] = self.summary_model

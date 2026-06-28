@@ -602,6 +602,36 @@ class TestSummaryFailureCooldown:
         assert mock_call.call_count == 1
 
 
+class TestSummaryCallTimeout:
+    def test_large_compression_prompt_scales_timeout_above_configured_floor(self):
+        with patch("agent.context_compressor._get_task_timeout", return_value=120.0), \
+             patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=224_000):
+            timeout = ContextCompressor._summary_call_timeout("large prompt")
+
+        assert timeout == 448.0
+
+    def test_configured_larger_timeout_remains_floor(self):
+        with patch("agent.context_compressor._get_task_timeout", return_value=300.0), \
+             patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=10_000):
+            timeout = ContextCompressor._summary_call_timeout("small prompt")
+
+        assert timeout == 300.0
+
+    def test_generate_summary_passes_adaptive_timeout_to_call_llm(self):
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "summary"
+        with patch("agent.context_compressor.get_model_context_length", return_value=300000):
+            c = ContextCompressor(model="gpt-5.5", provider="openai-codex", quiet_mode=True)
+
+        with patch("agent.context_compressor._get_task_timeout", return_value=120.0), \
+             patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=224_000), \
+             patch("agent.context_compressor.call_llm", return_value=mock_response) as mock_call:
+            c._generate_summary([{"role": "user", "content": "large live transcript"}])
+
+        assert mock_call.call_args.kwargs["timeout"] == 448.0
+
+
 class TestAuthFailureAborts:
     """A 401/403 on the summary call must ABORT compression (preserve the
     session unchanged) instead of rotating into a degraded child session

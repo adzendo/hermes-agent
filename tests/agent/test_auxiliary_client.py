@@ -1844,7 +1844,7 @@ class TestCallLlmPaymentFallback:
 
 
 class TestAuxiliaryFallbackLayering:
-    """Explicit-provider users get layered fallback: configured_chain → main agent → warn."""
+    """Explicit-provider users get layered fallback: configured_chain → fallback_providers → main agent → warn."""
 
     def _make_payment_err(self):
         exc = Exception("Payment Required: insufficient credits")
@@ -1913,8 +1913,41 @@ class TestAuxiliaryFallbackLayering:
         # Main agent fallback should NOT have been consulted — chain succeeded first
         main_called.assert_not_called()
 
-    def test_explicit_provider_falls_back_to_main_when_chain_exhausted(self, monkeypatch):
-        """If configured fallback_chain returns nothing, main agent model is tried next."""
+    def test_explicit_provider_falls_back_to_main_chain_before_main_agent_model(self, monkeypatch):
+        """If explicit aux provider + per-task chain fail, use top-level fallback_providers before retrying main."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
+
+        primary_client = MagicMock()
+        primary_client.chat.completions.create.side_effect = self._make_payment_err()
+
+        chain_client = MagicMock()
+        chain_client.chat.completions.create.return_value = MagicMock(choices=[
+            MagicMock(message=MagicMock(content="from top-level fallback chain"))
+        ])
+
+        with patch("agent.auxiliary_client._get_cached_client",
+                   return_value=(primary_client, "gpt-5.5")), \
+             patch("agent.auxiliary_client._resolve_task_provider_model",
+                   return_value=("openai-codex", "gpt-5.5", None, None, None)), \
+             patch("agent.auxiliary_client._try_configured_fallback_chain",
+                   return_value=(None, None, "")) as mock_task_chain, \
+             patch("agent.auxiliary_client._try_main_fallback_chain",
+                   return_value=(chain_client, "gemini-3.1-pro-preview", "gemini")) as mock_main_chain, \
+             patch("agent.auxiliary_client._try_main_agent_model_fallback") as mock_main_agent:
+            result = call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "hello"}],
+            )
+
+        assert result.choices[0].message.content == "from top-level fallback chain"
+        mock_task_chain.assert_called_once_with(
+            "compression", "openai-codex", reason="payment error")
+        mock_main_chain.assert_called_once_with(
+            "compression", "openai-codex", reason="payment error")
+        mock_main_agent.assert_not_called()
+
+    def test_explicit_provider_falls_back_to_main_when_chains_exhausted(self, monkeypatch):
+        """If configured and top-level fallback chains return nothing, main agent model is tried next."""
         monkeypatch.setenv("OPENROUTER_API_KEY", "or-key")
 
         primary_client = MagicMock()
@@ -1930,6 +1963,8 @@ class TestAuxiliaryFallbackLayering:
              patch("agent.auxiliary_client._resolve_task_provider_model",
                    return_value=("glm", "glm-4v-flash", None, None, None)), \
              patch("agent.auxiliary_client._try_configured_fallback_chain",
+                   return_value=(None, None, "")), \
+             patch("agent.auxiliary_client._try_main_fallback_chain",
                    return_value=(None, None, "")), \
              patch("agent.auxiliary_client._try_main_agent_model_fallback",
                    return_value=(main_client, "claude-sonnet-4", "main-agent(openrouter)")):
@@ -1990,6 +2025,8 @@ class TestAuxiliaryFallbackLayering:
              patch("agent.auxiliary_client._resolve_task_provider_model",
                    return_value=("glm", "glm-4v-flash", None, None, None)), \
              patch("agent.auxiliary_client._try_configured_fallback_chain",
+                   return_value=(None, None, "")), \
+             patch("agent.auxiliary_client._try_main_fallback_chain",
                    return_value=(None, None, "")), \
              patch("agent.auxiliary_client._try_main_agent_model_fallback",
                    return_value=(None, None, "")), \
@@ -2220,6 +2257,44 @@ class TestTransientTransportRetry:
         assert result == {"ok": True}
         # Same client called twice — no provider fallback needed.
         assert client.chat.completions.create.call_count == 2
+
+    def test_timeout_retry_rebuilds_same_provider_client(self):
+        """Timeouts can close/evict the Codex aux client; retry must re-resolve it."""
+        closed_client = MagicMock()
+        closed_client.base_url = "https://chatgpt.com/backend-api/codex"
+        closed_client.chat.completions.create.side_effect = TimeoutError(
+            "Codex auxiliary Responses stream exceeded 120.0s total timeout"
+        )
+
+        fresh_client = MagicMock()
+        fresh_client.base_url = "https://chatgpt.com/backend-api/codex"
+        fresh_client.chat.completions.create.return_value = {"ok": "fresh-client"}
+
+        with (
+            patch(
+                "agent.auxiliary_client._resolve_task_provider_model",
+                return_value=("openai-codex", "gpt-5.5", None, None, None),
+            ),
+            patch(
+                "agent.auxiliary_client._get_cached_client",
+                side_effect=[
+                    (closed_client, "gpt-5.5"),
+                    (fresh_client, "gpt-5.5"),
+                ],
+            ),
+            patch(
+                "agent.auxiliary_client._validate_llm_response",
+                side_effect=lambda resp, _task: resp,
+            ),
+        ):
+            result = call_llm(
+                task="compression",
+                messages=[{"role": "user", "content": "hi"}],
+            )
+
+        assert result == {"ok": "fresh-client"}
+        assert closed_client.chat.completions.create.call_count == 1
+        assert fresh_client.chat.completions.create.call_count == 1
 
     def test_retries_5xx_once_same_provider(self):
         class _Err503(Exception):
@@ -3333,16 +3408,22 @@ class TestCodexAuxiliaryAdapterTimeout:
 
     def test_enforces_total_timeout_while_stream_keeps_emitting_events(self):
         class _SlowAliveCreateStream:
+            def __init__(self):
+                self.yields = 0
+
             def __iter__(self):
                 for _ in range(5):
                     time.sleep(0.03)
+                    self.yields += 1
                     yield SimpleNamespace(type="response.in_progress")
 
             def close(self): pass
 
+        stream = _SlowAliveCreateStream()
+
         class FakeResponses:
             def create(self, **kwargs):
-                return _SlowAliveCreateStream()
+                return stream
 
         fake_client = SimpleNamespace(responses=FakeResponses(), close=lambda: None)
         adapter = _CodexCompletionsAdapter(fake_client, "gpt-5.5")
@@ -3354,7 +3435,12 @@ class TestCodexAuxiliaryAdapterTimeout:
                 timeout=0.05,
             )
 
-        assert time.monotonic() - started < 0.14
+        # The assertion that matters is that the adapter interrupts the live
+        # stream instead of waiting for every keepalive event.  Wall-clock import
+        # overhead on cold test processes is noisy on macOS, so assert the stream
+        # was cut short and keep only a loose no-hang bound.
+        assert stream.yields < 5
+        assert time.monotonic() - started < 0.30
 
 
 class TestCodexAuxiliaryToolMessageConversion:

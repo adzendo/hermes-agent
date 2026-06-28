@@ -5652,11 +5652,25 @@ def call_llm(
                 raise
             logger.info(
                 "Auxiliary %s: transient transport error; retrying once on "
-                "the same provider before fallback: %s",
+                "a rebuilt same-provider client before fallback: %s",
                 task or "call", transient_err,
             )
-            return _validate_llm_response(
-                client.chat.completions.create(**kwargs), task)
+            return _retry_same_provider_sync(
+                task=task,
+                resolved_provider=resolved_provider,
+                resolved_model=resolved_model,
+                resolved_base_url=resolved_base_url,
+                resolved_api_key=resolved_api_key,
+                resolved_api_mode=resolved_api_mode,
+                main_runtime=main_runtime,
+                final_model=final_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                effective_timeout=effective_timeout,
+                effective_extra_body=effective_extra_body,
+            )
     except Exception as first_err:
         if "temperature" in kwargs and _is_unsupported_temperature_error(first_err):
             retry_kwargs = dict(kwargs)
@@ -5942,9 +5956,9 @@ def call_llm(
             logger.info("Auxiliary %s: %s on %s (%s), trying fallback",
                         task or "call", reason, resolved_provider, first_err)
 
-            # Fallback order (#26882, #26803):
+            # Fallback order (#26882, #26803, #60628):
             #   1. User-configured fallback_chain (per-task) if set
-            #   2. For auto: top-level main fallback_providers/fallback_model
+            #   2. Top-level main fallback_providers/fallback_model
             #   3. For auto: built-in auxiliary discovery chain
             #   4. For explicit aux providers: main agent model safety net
             fb_client, fb_model, fb_label = (None, None, "")
@@ -5960,6 +5974,9 @@ def call_llm(
             else:
                 fb_client, fb_model, fb_label = _try_configured_fallback_chain(
                     task, resolved_provider or "auto", reason=reason)
+                if fb_client is None:
+                    fb_client, fb_model, fb_label = _try_main_fallback_chain(
+                        task, resolved_provider or "auto", reason=reason)
                 if fb_client is None:
                     fb_client, fb_model, fb_label = _try_main_agent_model_fallback(
                         resolved_provider, task, reason=reason)
@@ -5978,7 +5995,7 @@ def call_llm(
             # (#26882) The error itself is re-raised below.
             logger.warning(
                 "Auxiliary %s: %s on %s and all fallbacks exhausted "
-                "(fallback_chain + main agent model). Raising original error.",
+                "(fallback_chain + fallback_providers + main agent model). Raising original error.",
                 task or "call", reason, resolved_provider,
             )
         # Connection/timeout errors leave the cached client poisoned (closed
@@ -6162,11 +6179,24 @@ async def async_call_llm(
                 raise
             logger.info(
                 "Auxiliary %s (async): transient transport error; retrying "
-                "once on the same provider before fallback: %s",
+                "once on a rebuilt same-provider client before fallback: %s",
                 task or "call", transient_err,
             )
-            return _validate_llm_response(
-                await client.chat.completions.create(**kwargs), task)
+            return await _retry_same_provider_async(
+                task=task,
+                resolved_provider=resolved_provider,
+                resolved_model=resolved_model,
+                resolved_base_url=resolved_base_url,
+                resolved_api_key=resolved_api_key,
+                resolved_api_mode=resolved_api_mode,
+                final_model=final_model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                tools=tools,
+                effective_timeout=effective_timeout,
+                effective_extra_body=effective_extra_body,
+            )
     except Exception as first_err:
         if "temperature" in kwargs and _is_unsupported_temperature_error(first_err):
             retry_kwargs = dict(kwargs)
@@ -6406,9 +6436,9 @@ async def async_call_llm(
             logger.info("Auxiliary %s (async): %s on %s (%s), trying fallback",
                         task or "call", reason, resolved_provider, first_err)
 
-            # Fallback order (#26882, #26803):
+            # Fallback order (#26882, #26803, #60628):
             #   1. User-configured fallback_chain (per-task) if set
-            #   2. For auto: top-level main fallback_providers/fallback_model
+            #   2. Top-level main fallback_providers/fallback_model
             #   3. For auto: built-in auxiliary discovery chain
             #   4. For explicit aux providers: main agent model safety net
             fb_client, fb_model, fb_label = (None, None, "")
@@ -6424,6 +6454,9 @@ async def async_call_llm(
             else:
                 fb_client, fb_model, fb_label = _try_configured_fallback_chain(
                     task, resolved_provider or "auto", reason=reason)
+                if fb_client is None:
+                    fb_client, fb_model, fb_label = _try_main_fallback_chain(
+                        task, resolved_provider or "auto", reason=reason)
                 if fb_client is None:
                     fb_client, fb_model, fb_label = _try_main_agent_model_fallback(
                         resolved_provider, task, reason=reason)
@@ -6446,7 +6479,7 @@ async def async_call_llm(
             # All fallback layers exhausted — warn before re-raising. (#26882)
             logger.warning(
                 "Auxiliary %s (async): %s on %s and all fallbacks exhausted "
-                "(fallback_chain + main agent model). Raising original error.",
+                "(fallback_chain + fallback_providers + main agent model). Raising original error.",
                 task or "call", reason, resolved_provider,
             )
         # Mirror the sync path: drop poisoned clients on connection/timeout
