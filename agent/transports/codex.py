@@ -170,7 +170,10 @@ class ResponsesApiTransport(ProviderTransport):
         if reasoning_effort == "max":
             reasoning_effort = "extra_high"
 
-        if is_xai_responses and reasoning_effort == "extra_high":
+        if reasoning_effort == "extra_high" and not is_xai_responses:
+            reasoning_effort = "xhigh"
+
+        if is_xai_responses and reasoning_effort in ("extra_high", "xhigh"):
             # xAI's current Responses effort dial is low/medium/high. Keep
             # Hermes' canonical GPT-5.5 "Extra High" selection from leaking
             # into xAI requests where it would be rejected.

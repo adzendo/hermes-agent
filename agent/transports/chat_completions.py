@@ -450,6 +450,8 @@ class ChatCompletionsTransport(ProviderTransport):
                             canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
                             or "medium"
                         )
+                        if _reasoning_effort == "extra_high":
+                            _reasoning_effort = "xhigh"
                     extra_body["reasoning"] = {"enabled": True, "effort": _reasoning_effort}
 
         if provider_name == "gemini":

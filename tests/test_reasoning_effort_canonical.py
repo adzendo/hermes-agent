@@ -58,7 +58,7 @@ def test_reasoning_effort_display_labels_canonical_modes(raw, label):
     assert reasoning_effort_display_label(raw) == label
 
 
-def test_codex_responses_normalizes_legacy_xhigh_to_extra_high_payload():
+def test_codex_responses_preserves_legacy_xhigh_wire_payload():
     from agent.transports.codex import ResponsesApiTransport
 
     kwargs = ResponsesApiTransport().build_kwargs(
@@ -68,11 +68,11 @@ def test_codex_responses_normalizes_legacy_xhigh_to_extra_high_payload():
         reasoning_config={"enabled": True, "effort": "xhigh"},
     )
 
-    assert kwargs["reasoning"]["effort"] == "extra_high"
+    assert kwargs["reasoning"]["effort"] == "xhigh"
     assert kwargs["reasoning"]["summary"] == "auto"
 
 
-def test_codex_responses_sends_extra_high_payload_for_canonical_value():
+def test_codex_responses_maps_canonical_extra_high_to_xhigh_wire_payload():
     from agent.transports.codex import ResponsesApiTransport
 
     kwargs = ResponsesApiTransport().build_kwargs(
@@ -82,7 +82,7 @@ def test_codex_responses_sends_extra_high_payload_for_canonical_value():
         reasoning_config={"enabled": True, "effort": "extra_high"},
     )
 
-    assert kwargs["reasoning"]["effort"] == "extra_high"
+    assert kwargs["reasoning"]["effort"] == "xhigh"
 
 
 def test_codex_responses_clamps_extra_high_to_high_for_xai_responses(monkeypatch):
