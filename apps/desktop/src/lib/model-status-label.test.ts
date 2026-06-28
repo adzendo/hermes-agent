@@ -15,22 +15,22 @@ describe('model-status-label', () => {
     expect(displayModelName('anthropic/claude-haiku-4-5-20251001')).toBe('Haiku 4 5')
   })
 
-  it('maps reasoning effort to compact labels', () => {
-    expect(reasoningEffortLabel('high')).toBe('High')
-    expect(reasoningEffortLabel('extra_high')).toBe('Extra High')
-    expect(reasoningEffortLabel('xhigh')).toBe('Extra High')
+  it('maps reasoning effort to raw provider-style labels', () => {
+    expect(reasoningEffortLabel('high')).toBe('high')
+    expect(reasoningEffortLabel('extra_high')).toBe('xhigh')
+    expect(reasoningEffortLabel('xhigh')).toBe('xhigh')
     expect(reasoningEffortLabel('')).toBe('')
   })
 
   it('appends fast + effort session state to the status label', () => {
     expect(formatModelStatusLabel('openai/gpt-5.5', { fastMode: true, reasoningEffort: 'high' })).toBe(
-      'GPT-5.5 · Fast High'
+      'GPT-5.5 · Fast high'
     )
   })
 
   it('always surfaces the effort (default medium) so the level is visible', () => {
-    expect(formatModelStatusLabel('openai/gpt-5.5', { reasoningEffort: 'medium' })).toBe('GPT-5.5 · Med')
-    expect(formatModelStatusLabel('openai/gpt-5.5')).toBe('GPT-5.5 · Med')
+    expect(formatModelStatusLabel('openai/gpt-5.5', { reasoningEffort: 'medium' })).toBe('GPT-5.5 · medium')
+    expect(formatModelStatusLabel('openai/gpt-5.5')).toBe('GPT-5.5 · medium')
   })
 
   it('returns just the placeholder name when there is no model', () => {

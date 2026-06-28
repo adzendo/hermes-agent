@@ -4975,7 +4975,7 @@ class AIAgent:
         else:
             requested_effort = "medium"
 
-        if requested_effort == "extra_high" and "high" in supported_efforts:
+        if requested_effort in {"xhigh", "max"} and "high" in supported_efforts:
             requested_effort = "high"
         elif requested_effort not in supported_efforts:
             if "medium" in supported_efforts:

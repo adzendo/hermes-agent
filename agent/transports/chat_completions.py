@@ -21,64 +21,9 @@ from agent.transports.types import NormalizedResponse, ToolCall, Usage
 
 def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> dict | None:
     """Translate Hermes/OpenRouter-style reasoning config to Gemini thinkingConfig."""
-    if reasoning_config is None or not isinstance(reasoning_config, dict):
-        return None
+    from hermes_constants import gemini_thinking_config_for_reasoning
 
-    normalized_model = (model or "").strip().lower()
-    if normalized_model.startswith("google/"):
-        normalized_model = normalized_model.split("/", 1)[1]
-
-    # ``thinking_config`` is a Gemini-only request parameter. The same
-    # ``gemini`` provider also serves Gemma (and historically PaLM/Bard);
-    # those reject the field with HTTP 400 "Unknown name 'thinking_config':
-    # Cannot find field" — including the polite ``{"includeThoughts": False}``
-    # form. Omit the field entirely on non-Gemini models. (#17426)
-    if not normalized_model.startswith("gemini"):
-        return None
-
-    if reasoning_config.get("enabled") is False:
-        # Gemini can hide thought parts even when internal thinking still
-        # happens; omit thinkingLevel to avoid model-specific validation quirks.
-        return {"includeThoughts": False}
-
-    effort = str(reasoning_config.get("effort", "medium") or "medium").strip().lower()
-    if effort == "none":
-        return {"includeThoughts": False}
-
-    from hermes_constants import canonicalize_reasoning_effort
-
-    canonical_effort = canonicalize_reasoning_effort(effort) or "medium"
-
-    thinking_config: Dict[str, Any] = {"includeThoughts": True}
-
-    # Gemini 2.5 accepts thinkingBudget; don't guess a budget from Hermes'
-    # coarse effort levels. ``includeThoughts`` alone is enough to surface
-    # thought parts without risking request validation errors.
-    if normalized_model.startswith("gemini-2.5-"):
-        return thinking_config
-
-    # Gemini 3 Flash documents low/medium/high thinking levels; Gemini 3 Pro
-    # is stricter (low/high). Clamp Hermes' wider effort set to what each
-    # family accepts so we never forward an undocumented level verbatim.
-    if normalized_model.startswith(("gemini-3", "gemini-3.1", "gemini-3.5")):
-        if "flash" in normalized_model:
-            if canonical_effort == "minimal":
-                thinking_config["thinkingLevel"] = "minimal"
-            elif canonical_effort == "low":
-                thinking_config["thinkingLevel"] = "low"
-            elif canonical_effort in {"high", "extra_high", "max"}:
-                thinking_config["thinkingLevel"] = "high"
-            else:
-                thinking_config["thinkingLevel"] = "medium"
-        elif "pro" in normalized_model:
-            if canonical_effort == "low":
-                thinking_config["thinkingLevel"] = "low"
-            elif canonical_effort in {"high", "extra_high", "max"}:
-                thinking_config["thinkingLevel"] = "high"
-            else:
-                thinking_config["thinkingLevel"] = "medium"
-
-    return thinking_config
+    return gemini_thinking_config_for_reasoning(model, reasoning_config)
 
 
 def _snake_case_gemini_thinking_config(config: dict | None) -> dict | None:
@@ -354,7 +299,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 _kimi_effort = "medium"
                 if reasoning_config and isinstance(reasoning_config, dict):
                     _e = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-                    if _e in ("extra_high", "max"):
+                    if _e in ("xhigh", "max"):
                         _kimi_effort = "high"
                     elif _e in {"low", "medium", "high"}:
                         _kimi_effort = _e
@@ -373,7 +318,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 _tokenhub_effort = "high"
                 if reasoning_config and isinstance(reasoning_config, dict):
                     _e = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-                    if _e in ("extra_high", "max"):
+                    if _e in ("xhigh", "max"):
                         _tokenhub_effort = "high"
                     elif _e in {"low", "medium", "high"}:
                         _tokenhub_effort = _e
@@ -442,16 +387,39 @@ class ChatCompletionsTransport(ProviderTransport):
                     and isinstance(reasoning_config, dict)
                     and reasoning_config.get("enabled") is False
                 ):
-                    from hermes_constants import canonicalize_reasoning_effort
+                    from hermes_constants import (
+                        canonicalize_reasoning_effort,
+                        codex_reasoning_effort_wire_value,
+                        xai_reasoning_effort_wire_value,
+                    )
 
                     _reasoning_effort = "medium"
                     if reasoning_config and isinstance(reasoning_config, dict):
-                        _reasoning_effort = (
-                            canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-                            or "medium"
-                        )
-                        if _reasoning_effort == "extra_high":
-                            _reasoning_effort = "xhigh"
+                        _raw_effort = reasoning_config.get("effort") or ""
+                        _model_l = str(model or "").strip().lower()
+                        if provider_name in {"xai", "xai-oauth"} or "grok" in _model_l:
+                            _reasoning_effort = (
+                                xai_reasoning_effort_wire_value(_raw_effort) or "medium"
+                            )
+                        elif (
+                            provider_name in {"openai", "openai-codex", "codex"}
+                            or "gpt-5" in _model_l
+                            or "codex" in _model_l
+                        ):
+                            _reasoning_effort = (
+                                codex_reasoning_effort_wire_value(_raw_effort) or "medium"
+                            )
+                        else:
+                            _canonical = canonicalize_reasoning_effort(_raw_effort) or "medium"
+                            if _canonical == "minimal":
+                                _reasoning_effort = "low"
+                            elif _canonical in {"xhigh", "max"}:
+                                # Unknown OpenAI-compatible reasoning endpoints
+                                # are safest with low/medium/high. Known
+                                # providers override this through profiles.
+                                _reasoning_effort = "high"
+                            else:
+                                _reasoning_effort = _canonical
                     extra_body["reasoning"] = {"enabled": True, "effort": _reasoning_effort}
 
         if provider_name == "gemini":

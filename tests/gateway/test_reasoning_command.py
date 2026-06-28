@@ -75,7 +75,7 @@ class TestReasoningCommand:
         # exact args-hint literal — it changes whenever a new arg is added
         # (e.g. full/clamp). Assert the command + its category-defining args.
         assert "/reasoning" in result
-        assert "level" in result and "show" in result and "hide" in result
+        assert "minimal" in result and "show" in result and "hide" in result
 
     def test_reasoning_is_known_command(self):
         source = inspect.getsource(gateway_run.GatewayRunner._handle_message)
@@ -103,8 +103,8 @@ class TestReasoningCommand:
 
         result = await runner._handle_reasoning_command(_make_event("/reasoning"))
 
-        assert "**Effort:** `none (disabled)`" in result
-        assert "**Display:** on ✓" in result
+        assert "Effort: none (disabled)" in result
+        assert "Display: on ✓" in result
         assert runner._reasoning_config == {"enabled": False}
         assert runner._show_reasoning is True
 

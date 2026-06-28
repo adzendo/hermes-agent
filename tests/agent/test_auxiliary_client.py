@@ -3081,14 +3081,14 @@ class TestCodexAdapterReasoningTranslation:
         assert captured.get("reasoning") == {"effort": "medium", "summary": "auto"}
         assert captured.get("include") == ["reasoning.encrypted_content"]
 
-    def test_reasoning_effort_minimal_clamped_to_low(self):
-        """Codex backend rejects 'minimal'; adapter clamps to 'low' per main transport."""
+    def test_reasoning_effort_minimal_passes_through(self):
+        """Codex/GPT-5.5 accepts the raw 'minimal' effort."""
         adapter, captured = self._build_adapter()
         adapter.create(
             messages=[{"role": "user", "content": "hi"}],
             extra_body={"reasoning": {"effort": "minimal"}},
         )
-        assert captured.get("reasoning") == {"effort": "low", "summary": "auto"}
+        assert captured.get("reasoning") == {"effort": "minimal", "summary": "auto"}
         assert captured.get("include") == ["reasoning.encrypted_content"]
 
     def test_reasoning_effort_low_passed_through(self):

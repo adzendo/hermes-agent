@@ -730,11 +730,9 @@ def get_supported_reasoning_efforts(provider: str, model_id: str) -> list[str]:
     slug = (provider or "").strip().lower()
     mid = (model_id or "").strip().lower()
 
-    # Anthropic Claude 3 Opus or Fable 5
-    if slug == "anthropic" and ("opus" in mid or ("fable" in mid and "5" in mid)):
-        return ["low", "medium", "high", "extra_high", "max"]
-    # Anthropic Sonnet 4.6
-    if slug == "anthropic" and "sonnet" in mid and ("4.6" in mid or "4-6" in mid):
+    # Anthropic Claude modern adaptive-thinking models expose Max as the
+    # strongest mode; do not advertise OpenAI/Codex-specific Extra High.
+    if slug == "anthropic" and ("opus" in mid or "sonnet" in mid or "fable" in mid or "claude" in mid):
         return ["low", "medium", "high", "max"]
     # Default Anthropic / General
     if slug == "anthropic":
@@ -742,7 +740,7 @@ def get_supported_reasoning_efforts(provider: str, model_id: str) -> list[str]:
 
     # OpenAI / Codex / GPT-5.5
     if slug in ("openai", "openai-codex") or "gpt-5.5" in mid:
-        return ["low", "medium", "high", "extra_high"]
+        return ["minimal", "low", "medium", "high", "xhigh"]
 
     # Google Gemini
     if slug == "gemini" or "gemini" in mid:

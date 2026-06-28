@@ -96,19 +96,19 @@ describe('ModelSettings', () => {
     expect(await screen.findByText(/DeepSeek/)).toBeTruthy()
   })
 
-  it('shows only canonical GPT-5.5 reasoning defaults', async () => {
+  it('shows provider-style reasoning default tags', async () => {
     await renderModelSettings()
     await waitFor(() => expect(getHermesConfigRecord).toHaveBeenCalled())
 
     const triggers = await screen.findAllByRole('combobox')
     fireEvent.click(triggers[2])
 
-    expect((await screen.findAllByText('Minimal')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Low')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Medium')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('High')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Extra High')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Max')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('minimal')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('low')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('medium')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('high')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('xhigh')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('max')).length).toBeGreaterThan(0)
     expect(screen.queryByText('Reasoning off')).toBeNull()
   })
 

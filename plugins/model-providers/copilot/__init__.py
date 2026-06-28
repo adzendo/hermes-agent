@@ -40,7 +40,9 @@ class CopilotProfile(ProviderProfile):
                         reasoning_config.get("effort", "medium")
                     ) or "medium"
                     # Normalize non-standard effort levels to the nearest supported
-                    if effort == "extra_high":
+                    if effort == "minimal":
+                        effort = "low"
+                    elif effort in {"xhigh", "max"}:
                         effort = "high"
                     if effort in supported_efforts:
                         extra_body["reasoning"] = {"effort": effort}

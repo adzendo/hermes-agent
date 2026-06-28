@@ -684,8 +684,11 @@ class _CodexCompletionsAdapter:
     routes them through the Codex Responses streaming API."""
 
     def __init__(self, real_client: OpenAI, model: str):
+        from agent.codex_runtime import _consume_codex_event_stream
+
         self._client = real_client
         self._model = model
+        self._consume_codex_event_stream = _consume_codex_event_stream
 
     def create(self, **kwargs) -> Any:
         messages = kwargs.get("messages", [])
@@ -757,11 +760,12 @@ class _CodexCompletionsAdapter:
                     # to the default rather than being forwarded to the
                     # Codex backend, which rejects e.g. {"effort": null}
                     # with a 400.
-                    effort = reasoning_cfg.get("effort") or "medium"
-                    # Codex backend rejects "minimal"; clamp to "low" to
-                    # match the main-agent Codex transport behavior.
-                    if effort == "minimal":
-                        effort = "low"
+                    from hermes_constants import codex_reasoning_effort_wire_value
+
+                    effort = (
+                        codex_reasoning_effort_wire_value(reasoning_cfg.get("effort") or "medium")
+                        or "medium"
+                    )
                     resp_kwargs["reasoning"] = {
                         "effort": effort,
                         "summary": "auto",
@@ -877,7 +881,7 @@ class _CodexCompletionsAdapter:
             # Consuming raw events and assembling the final response
             # ourselves from ``response.output_item.done`` makes us
             # structurally immune to that drift.
-            from agent.codex_runtime import _consume_codex_event_stream
+            _check_cancelled()
 
             stream_kwargs = dict(resp_kwargs)
             stream_kwargs["stream"] = True
@@ -888,10 +892,11 @@ class _CodexCompletionsAdapter:
                 _check_cancelled()
 
             event_stream = self._client.responses.create(**stream_kwargs)
+            _check_cancelled()
             try:
-                final = _consume_codex_event_stream(
+                final = self._consume_codex_event_stream(
                     event_stream,
-                    model=resp_kwargs.get("model"),
+                    model=str(resp_kwargs.get("model") or model or self._model),
                     on_event=_on_each_event,
                 )
             finally:
@@ -1059,6 +1064,12 @@ class _AnthropicCompletionsAdapter:
         else:
             max_tokens = kwargs.get("max_tokens") or kwargs.get("max_completion_tokens") or 2000
         temperature = kwargs.get("temperature")
+        extra_body = kwargs.get("extra_body") or {}
+        reasoning_config = None
+        if isinstance(extra_body, dict):
+            maybe_reasoning = extra_body.get("reasoning")
+            if isinstance(maybe_reasoning, dict):
+                reasoning_config = maybe_reasoning
 
         normalized_tool_choice = None
         if isinstance(tool_choice, str):
@@ -1075,7 +1086,7 @@ class _AnthropicCompletionsAdapter:
             messages=messages,
             tools=tools,
             max_tokens=max_tokens,
-            reasoning_config=None,
+            reasoning_config=reasoning_config,
             tool_choice=normalized_tool_choice,
             is_oauth=self._is_oauth,
         )
@@ -5417,6 +5428,37 @@ def _build_call_kwargs(
 
     # Provider-specific extra_body
     merged_extra = dict(extra_body or {})
+    provider_l = str(provider or "").strip().lower()
+    model_l = str(model or "").strip().lower()
+    if provider_l == "gemini" or model_l.startswith(("gemini", "google/gemini")):
+        from hermes_constants import gemini_thinking_config_for_reasoning
+
+        _reasoning_cfg = merged_extra.get("reasoning")
+        _thinking_config = gemini_thinking_config_for_reasoning(model, _reasoning_cfg)
+        if _thinking_config:
+            # Gemini does not understand OpenAI/OpenRouter-style
+            # extra_body.reasoning. Translate it to the native thinking_config
+            # field and drop the generic key so both native and strict
+            # OpenAI-compatible Gemini routes avoid unknown-field 400s.
+            merged_extra.pop("reasoning", None)
+            if str(base_url or "").strip().rstrip("/").lower().endswith("/openai"):
+                google_extra = (
+                    merged_extra.setdefault("extra_body", {})
+                    .setdefault("google", {})
+                )
+                google_extra.setdefault("thinking_config", {
+                    "include_thoughts": _thinking_config.get("includeThoughts"),
+                    **(
+                        {"thinking_level": _thinking_config["thinkingLevel"]}
+                        if "thinkingLevel" in _thinking_config else {}
+                    ),
+                    **(
+                        {"thinking_budget": _thinking_config["thinkingBudget"]}
+                        if "thinkingBudget" in _thinking_config else {}
+                    ),
+                })
+            else:
+                merged_extra.setdefault("thinking_config", _thinking_config)
     if provider == "nous":
         merged_extra.setdefault("tags", []).extend(_nous_portal_tags())
     if merged_extra:

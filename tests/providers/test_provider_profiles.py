@@ -314,8 +314,8 @@ class TestOpenRouterProfile:
 
         Covers the full canonical config range produced by
         ``hermes_constants.parse_reasoning_effort``. OpenRouter's Anthropic
-        verbosity endpoint only accepts up to ``high``, so Hermes clamps
-        canonical ``extra_high`` to ``high`` before transit.
+        verbosity path now preserves Claude's Max tier, so Hermes maps
+        ``xhigh`` / legacy ``extra_high`` aliases to ``max`` before transit.
         """
         p = get_provider_profile("openrouter")
         model = "anthropic/claude-fable-5"
@@ -325,8 +325,9 @@ class TestOpenRouterProfile:
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "extra_high": "high",
-            "xhigh": "high",
+            "extra_high": "max",
+            "xhigh": "max",
+            "max": "max",
         }
         for effort, wire_effort in expected.items():
             eb, tl = p.build_api_kwargs_extras(
@@ -346,7 +347,7 @@ class TestOpenRouterProfile:
             supports_reasoning=True,
             model="anthropic/claude-fable-5",
         )
-        assert tl["verbosity"] == "high"
+        assert tl["verbosity"] == "max"
         assert "reasoning" not in eb
 
     def test_mandatory_anthropic_verbosity_rejects_unknown_and_clamps_aliases(self):
@@ -358,7 +359,7 @@ class TestOpenRouterProfile:
                 supports_reasoning=True,
                 model="anthropic/claude-fable-5",
             )
-            assert tl["verbosity"] == "high"
+            assert tl["verbosity"] == "max"
         _, tl = p.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": "ultra"},
             supports_reasoning=True,

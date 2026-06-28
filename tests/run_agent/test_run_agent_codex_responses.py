@@ -345,14 +345,14 @@ def test_build_api_kwargs_codex_clamps_minimal_effort(monkeypatch):
         ]
     )
 
-    assert kwargs["reasoning"]["effort"] == "low"
+    assert kwargs["reasoning"]["effort"] == "minimal"
 
 
 def test_build_api_kwargs_codex_preserves_supported_efforts(monkeypatch):
     """Official GPT-5.5/Codex effort levels pass through unchanged."""
     _patch_agent_bootstrap(monkeypatch)
 
-    for effort in ("low", "medium", "high", "extra_high"):
+    for effort in ("minimal", "low", "medium", "high", "xhigh"):
         agent = run_agent.AIAgent(
             model="gpt-5-codex",
             base_url="https://chatgpt.com/backend-api/codex",
@@ -376,8 +376,8 @@ def test_build_api_kwargs_codex_preserves_supported_efforts(monkeypatch):
         assert kwargs["reasoning"]["effort"] == effort, f"{effort} should pass through unchanged"
 
 
-def test_build_api_kwargs_codex_normalizes_legacy_xhigh(monkeypatch):
-    """Legacy xhigh aliases to canonical extra_high before hitting Codex."""
+def test_build_api_kwargs_codex_preserves_raw_xhigh(monkeypatch):
+    """xhigh remains the canonical GPT-5.5/Codex effort before hitting Codex."""
     _patch_agent_bootstrap(monkeypatch)
 
     agent = run_agent.AIAgent(
@@ -400,7 +400,7 @@ def test_build_api_kwargs_codex_normalizes_legacy_xhigh(monkeypatch):
             {"role": "user", "content": "hi"},
         ]
     )
-    assert kwargs["reasoning"]["effort"] == "extra_high"
+    assert kwargs["reasoning"]["effort"] == "xhigh"
 
 
 def test_build_api_kwargs_copilot_responses_omits_openai_only_fields(monkeypatch):

@@ -10,9 +10,9 @@ import {
   getGlobalModelOptions,
   getMoaModels,
   getRecommendedDefaultModel,
-  saveMoaModels,
   getHermesConfigRecord,
   saveHermesConfig,
+  saveMoaModels,
   setEnvVar,
   setModelAssignment
 } from '@/hermes'
@@ -28,10 +28,9 @@ import { CONTROL_TEXT } from './constants'
 import { getNested, setNested } from './helpers'
 import { ListRow, LoadingState, Pill, SectionHeading } from './primitives'
 
-// Hermes' official GPT-5.5/Codex reasoning levels
-// (hermes_constants.VALID_REASONING_EFFORTS). Legacy aliases normalize for
-// existing configs, but only canonical provider-accepted choices are displayed.
-const EFFORT_VALUES = ['minimal', 'low', 'medium', 'high', 'extra_high', 'max'] as const
+// Hermes' provider-style reasoning effort tags. The settings UI narrows this
+// list to a model's reported `supported_reasoning_efforts` when available.
+const EFFORT_VALUES = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 type EffortValue = (typeof EFFORT_VALUES)[number]
 
 // agent.service_tier stores "fast"/"priority"/"on" for fast; anything else is
@@ -41,14 +40,33 @@ const isFastTier = (tier: unknown): boolean =>
 
 const normalizeEffortValue = (raw: unknown): EffortValue => {
   const value = String(raw ?? '').trim().toLowerCase()
-  if (!value) return 'medium'
+
+  if (!value) {
+    return 'medium'
+  }
+
   const squashed = value.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
-  if (squashed === 'minimum') return 'minimal'
-  if (['xhigh', 'x high', 'extra high', 'maximum'].includes(squashed)) return 'extra_high'
+
+  if (squashed === 'minimum') {
+    return 'minimal'
+  }
+
+  if (['xhigh', 'x high', 'extra high', 'maximum'].includes(squashed)) {
+    return squashed === 'maximum' ? 'max' : 'xhigh'
+  }
+
   return (EFFORT_VALUES as readonly string[]).includes(value) ? (value as EffortValue) : 'medium'
 }
 
-const effortLabelKey = (v: EffortValue) => (v === 'extra_high' ? 'extraHigh' : v)
+const normalizeEffortOptions = (raw: unknown): EffortValue[] => {
+  if (!Array.isArray(raw)) {
+    return [...EFFORT_VALUES]
+  }
+
+  const options = raw.map(normalizeEffortValue).filter((value, index, arr) => arr.indexOf(value) === index)
+
+  return options.length ? options : [...EFFORT_VALUES]
+}
 
 // A provider row is "ready" to pick a model from when it reports models. The
 // backend now surfaces the full `hermes model` universe (every canonical
@@ -292,7 +310,12 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
 
   const reasoningSupported = mainCaps?.reasoning ?? true
   const fastSupported = mainCaps?.fast ?? false
+  const effortOptions = useMemo(
+    () => normalizeEffortOptions(mainCaps?.supported_reasoning_efforts),
+    [mainCaps?.supported_reasoning_efforts]
+  )
   const effortValue = normalizeEffortValue(getNested(config ?? {}, 'agent.reasoning_effort'))
+  const visibleEffortValue = effortOptions.includes(effortValue) ? effortValue : (effortOptions[0] ?? 'medium')
   const fastOn = isFastTier(getNested(config ?? {}, 'agent.service_tier'))
 
   // Persist a single agent.* default by round-tripping the whole config record
@@ -575,14 +598,14 @@ export function ModelSettings({ onMainModelChanged }: ModelSettingsProps) {
             {reasoningSupported && (
               <div className="flex items-center gap-2 text-xs">
                 {m.reasoning}
-                <Select onValueChange={value => void writeAgentDefault('agent.reasoning_effort', value)} value={effortValue}>
+                <Select onValueChange={value => void writeAgentDefault('agent.reasoning_effort', value)} value={visibleEffortValue}>
                   <SelectTrigger className={cn('min-w-28', CONTROL_TEXT)}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {EFFORT_VALUES.map(value => (
+                    {effortOptions.map(value => (
                       <SelectItem key={value} value={value}>
-                        {t.shell.modelOptions[effortLabelKey(value)]}
+                        {value}
                       </SelectItem>
                     ))}
                   </SelectContent>

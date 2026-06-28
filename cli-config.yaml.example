@@ -643,8 +643,8 @@ agent:
   
   # Reasoning effort level (OpenRouter and Nous Portal)
   # Controls how much "thinking" the model does before responding.
-  # Options: "low", "medium", "high", "extra_high" (official GPT-5.5/Codex efforts)
-  # Legacy aliases such as "minimal" and "xhigh" are accepted and normalized.
+  # Options: "minimal", "low", "medium", "high", "xhigh", "max" (provider-style effort tags)
+  # Legacy aliases such as "extra_high" are accepted and normalized.
   reasoning_effort: "medium"
   
   # Predefined personalities (use with /personality command)

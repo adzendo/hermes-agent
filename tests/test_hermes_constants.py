@@ -306,8 +306,8 @@ class TestParseReasoningEffort:
             ("MEDIUM", "medium"),
             ("High", "high"),
             ("  low  ", "low"),
-            ("\tXHIGH\n", "extra_high"),
-            ("Extra High", "extra_high"),
+            ("\tXHIGH\n", "xhigh"),
+            ("Extra High", "xhigh"),
             ("minimal", "minimal"),
             ("max", "max"),
             ("Maximum", "max"),
@@ -333,10 +333,10 @@ class TestParseReasoningEffort:
     def test_known_supported_levels_are_documented(self):
         """Guard against silently changing the canonical effort enum.
     
-        The official GPT-5.5/Codex effort set is Low, Medium, High, Extra High.
-        Legacy aliases may parse, but must not be part of the canonical enum.
+        The official provider-style effort set is minimal, low, medium, high,
+        xhigh, max. Older aliases may parse, but must not be advertised.
         """
-        assert VALID_REASONING_EFFORTS == ("minimal", "low", "medium", "high", "extra_high", "max")
+        assert VALID_REASONING_EFFORTS == ("minimal", "low", "medium", "high", "xhigh", "max")
 
 
 class TestSecureParentDir:

@@ -162,22 +162,15 @@ class ResponsesApiTransport(ProviderTransport):
             elif reasoning_config.get("effort"):
                 reasoning_effort = reasoning_config["effort"]
 
-        from hermes_constants import canonicalize_reasoning_effort
+        from hermes_constants import (
+            codex_reasoning_effort_wire_value,
+            xai_reasoning_effort_wire_value,
+        )
 
-        reasoning_effort = canonicalize_reasoning_effort(reasoning_effort) or "medium"
-        if reasoning_effort == "minimal":
-            reasoning_effort = "low"
-        if reasoning_effort == "max":
-            reasoning_effort = "extra_high"
-
-        if reasoning_effort == "extra_high" and not is_xai_responses:
-            reasoning_effort = "xhigh"
-
-        if is_xai_responses and reasoning_effort in ("extra_high", "xhigh"):
-            # xAI's current Responses effort dial is low/medium/high. Keep
-            # Hermes' canonical GPT-5.5 "Extra High" selection from leaking
-            # into xAI requests where it would be rejected.
-            reasoning_effort = "high"
+        if is_xai_responses:
+            reasoning_effort = xai_reasoning_effort_wire_value(reasoning_effort) or "medium"
+        else:
+            reasoning_effort = codex_reasoning_effort_wire_value(reasoning_effort) or "medium"
 
         response_tools = _responses_tools(tools)
 

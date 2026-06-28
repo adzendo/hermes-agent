@@ -148,14 +148,14 @@ class OpenRouterProfile(ProviderProfile):
             # ``reasoning`` field, preserving the #42991 400 fix.
             if _anthropic_reasoning_is_mandatory(model):
                 cfg = reasoning_config or {}
-                from hermes_constants import canonicalize_reasoning_effort
+                from hermes_constants import anthropic_reasoning_effort_wire_value
 
-                effort = canonicalize_reasoning_effort(cfg.get("effort") or "")
+                effort = anthropic_reasoning_effort_wire_value(cfg.get("effort") or "")
                 # Only emit when effort is actually requested and reasoning
                 # isn't explicitly disabled. Otherwise omit ``verbosity`` so the
                 # model keeps its own adaptive default (``high``).
                 if cfg.get("enabled", True) is not False and effort and effort != "none":
-                    top_level["verbosity"] = "high" if effort == "extra_high" else effort
+                    top_level["verbosity"] = effort
             elif reasoning_config is not None:
                 normalized = dict(reasoning_config)
                 if normalized.get("enabled", True) is not False:
@@ -163,7 +163,7 @@ class OpenRouterProfile(ProviderProfile):
 
                     effort = canonicalize_reasoning_effort(normalized.get("effort") or "")
                     if effort:
-                        normalized["effort"] = "high" if effort == "extra_high" else effort
+                        normalized["effort"] = "high" if effort in {"xhigh", "max"} else effort
                 extra_body["reasoning"] = normalized
             else:
                 extra_body["reasoning"] = {"enabled": True, "effort": "medium"}

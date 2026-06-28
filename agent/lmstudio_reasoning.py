@@ -3,8 +3,8 @@ transport and run_agent's iteration-limit summary path.
 
 LM Studio publishes per-model ``capabilities.reasoning.allowed_options`` (e.g.
 ``["off","on"]`` for toggle-style models, ``["off","minimal","low"]`` for
-graduated models). Hermes stores the canonical GPT-5.5 effort set
-(``low``/``medium``/``high``/``extra_high``), then maps that onto LM Studio's
+graduated models). Hermes accepts provider-style efforts
+(``minimal``/``low``/``medium``/``high``/``xhigh``/``max``), then maps them onto LM Studio's
 provider-specific OpenAI-compatible vocabulary and clamps against the model's
 allowed set so the server doesn't 400 on an unsupported effort.
 """
@@ -15,7 +15,7 @@ from typing import List, Optional
 
 # LM Studio accepts these top-level reasoning_effort wire values via its
 # OpenAI-compatible chat.completions endpoint. ``xhigh`` is LM Studio's provider
-# wire value for Hermes' canonical ``extra_high``.
+# wire value for the strongest local reasoning tier.
 _LM_VALID_EFFORTS = {"none", "minimal", "low", "medium", "high", "xhigh"}
 
 # Toggle-style models publish allowed_options as ["off","on"] in /api/v1/models.
@@ -42,9 +42,9 @@ def resolve_lmstudio_effort(
             from hermes_constants import canonicalize_reasoning_effort
 
             canonical = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-            if canonical == "extra_high":
+            if canonical in {"xhigh", "max"}:
                 effort = "xhigh"
-            elif canonical in {"low", "medium", "high"}:
+            elif canonical in {"minimal", "low", "medium", "high"}:
                 effort = canonical
     if allowed_options:
         allowed = {_LM_EFFORT_ALIASES.get(str(opt).strip().lower(), str(opt).strip().lower()) for opt in allowed_options}

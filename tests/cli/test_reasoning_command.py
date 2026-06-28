@@ -34,10 +34,11 @@ class TestParseReasoningConfig(unittest.TestCase):
             "low": "low",
             "medium": "medium",
             "high": "high",
-            "extra_high": "extra_high",
-            "extra high": "extra_high",
-            "xhigh": "extra_high",
+            "extra_high": "xhigh",
+            "extra high": "xhigh",
+            "xhigh": "xhigh",
             "minimal": "minimal",
+            "max": "max",
         }
         for level, effort in expected.items():
             result = self._parse(level)

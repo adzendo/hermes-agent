@@ -269,8 +269,8 @@ class TestCodexBuildKwargs:
             model="gpt-5.4", messages=messages, tools=[],
             reasoning_config={"effort": "minimal"},
         )
-        # "minimal" should be clamped to "low"
-        assert kw.get("reasoning", {}).get("effort") == "low"
+        # Codex/GPT-5.5 supports the raw "minimal" effort.
+        assert kw.get("reasoning", {}).get("effort") == "minimal"
 
     def test_xai_reasoning_effort_passed(self, transport):
         messages = [{"role": "user", "content": "Hi"}]

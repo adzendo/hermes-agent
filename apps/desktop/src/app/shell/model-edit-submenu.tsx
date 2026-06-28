@@ -16,16 +16,9 @@ import { setModelPreset } from '@/store/model-presets'
 import { notifyError } from '@/store/notifications'
 import { $activeSessionId, setCurrentFastMode, setCurrentReasoningEffort } from '@/store/session'
 
-// Hermes' real reasoning levels (see VALID_REASONING_EFFORTS); `none` is owned
-// by the Thinking toggle, not the radio.
-const EFFORT_OPTIONS = [
-  { value: 'minimal', labelKey: 'minimal' },
-  { value: 'low', labelKey: 'low' },
-  { value: 'medium', labelKey: 'medium' },
-  { value: 'high', labelKey: 'high' },
-  { value: 'extra_high', labelKey: 'extraHigh' },
-  { value: 'max', labelKey: 'max' }
-] as const
+// Hermes' provider-style reasoning tags (see VALID_REASONING_EFFORTS); `none`
+// is owned by the Thinking toggle, not the radio.
+const EFFORT_OPTIONS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 /** How "fast" is achieved for a given model — two different mechanisms:
  *  - `param`: the Anthropic/OpenAI `speed=fast` request parameter.
@@ -106,7 +99,16 @@ export function ModelEditSubmenu({
   const { t } = useI18n()
   const copy = t.shell.modelOptions
   const activeSessionId = useStore($activeSessionId)
-  const activeOptions = supportedReasoningEfforts && supportedReasoningEfforts.length > 0 ? EFFORT_OPTIONS.filter(o => supportedReasoningEfforts.includes(o.value)) : EFFORT_OPTIONS
+  const normalizeSupportedOptions = (values?: string[]) => {
+    if (!values?.length) {
+      return [...EFFORT_OPTIONS]
+    }
+    const normalized = values
+      .map(value => normalizeEffort(value))
+      .filter((value): value is (typeof EFFORT_OPTIONS)[number] => EFFORT_OPTIONS.includes(value as (typeof EFFORT_OPTIONS)[number]))
+    return normalized.filter((value, index) => normalized.indexOf(value) === index)
+  }
+  const activeOptions = normalizeSupportedOptions(supportedReasoningEfforts)
 
   const effortValue = normalizeEffort(effort)
   const thinkingOn = isThinkingEnabled(effort)
@@ -215,11 +217,11 @@ export function ModelEditSubmenu({
                 {activeOptions.map(option => (
                   <DropdownMenuRadioItem
                     className={dropdownMenuRow}
-                    key={option.value}
+                    key={option}
                     onSelect={event => event.preventDefault()}
-                    value={option.value}
+                    value={option}
                   >
-                    {copy[option.labelKey]}
+                    {option}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -244,12 +246,15 @@ function normalizeEffort(effort: string): string {
   if (value === 'none') {
     return ''
   }
-  if (value === 'minimal' || squashed === 'minimum') {
-    return 'low'
+  if (squashed === 'minimum') {
+    return 'minimal'
   }
-  if (['xhigh', 'x high', 'extra high', 'max', 'maximum'].includes(squashed)) {
-    return 'extra_high'
+  if (['xhigh', 'x high', 'extra high', 'extra_high', 'extra-high'].includes(squashed)) {
+    return 'xhigh'
+  }
+  if (['max', 'maximum'].includes(squashed)) {
+    return 'max'
   }
 
-  return EFFORT_OPTIONS.some(option => option.value === value) ? value : 'medium'
+  return (EFFORT_OPTIONS as readonly string[]).includes(value) ? value : 'medium'
 }

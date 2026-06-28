@@ -13,22 +13,22 @@ describe("normalizeEffort", () => {
     expect(normalizeEffort("   ")).toBe("medium");
   });
 
-  it("passes through every official effort level plus thinking-off", () => {
-    for (const level of ["none", "low", "medium", "high", "extra_high"]) {
+  it("passes through every provider-style effort level plus thinking-off", () => {
+    for (const level of ["none", "minimal", "low", "medium", "high", "xhigh", "max"]) {
       expect(normalizeEffort(level)).toBe(level);
     }
   });
 
-  it("normalizes legacy aliases without surfacing them as selectable values", () => {
-    expect(normalizeEffort("minimal")).toBe("low");
-    expect(normalizeEffort("  XHigh  ")).toBe("extra_high");
-    expect(normalizeEffort("extra high")).toBe("extra_high");
-    expect(normalizeEffort("max")).toBe("extra_high");
+  it("normalizes legacy aliases to raw provider tags", () => {
+    expect(normalizeEffort("  XHigh  ")).toBe("xhigh");
+    expect(normalizeEffort("extra_high")).toBe("xhigh");
+    expect(normalizeEffort("extra high")).toBe("xhigh");
+    expect(normalizeEffort("maximum")).toBe("max");
   });
 
   it("is case- and whitespace-insensitive", () => {
     expect(normalizeEffort("HIGH")).toBe("high");
-    expect(normalizeEffort("  Extra High  ")).toBe("extra_high");
+    expect(normalizeEffort("  Extra High  ")).toBe("xhigh");
   });
 
   it("falls back to medium for unknown values", () => {
@@ -44,13 +44,15 @@ describe("EFFORT_OPTIONS", () => {
     }
   });
 
-  it("surfaces only thinking-off plus the official GPT-5.5 effort levels", () => {
+  it("surfaces only thinking-off plus raw provider-style effort tags", () => {
     expect(EFFORT_OPTIONS).toEqual([
-      { value: "none", label: "Off (no thinking)" },
-      { value: "low", label: "Low" },
-      { value: "medium", label: "Medium" },
-      { value: "high", label: "High" },
-      { value: "extra_high", label: "Extra High" },
+      { value: "none", label: "none" },
+      { value: "minimal", label: "minimal" },
+      { value: "low", label: "low" },
+      { value: "medium", label: "medium" },
+      { value: "high", label: "high" },
+      { value: "xhigh", label: "xhigh" },
+      { value: "max", label: "max" },
     ]);
   });
 });

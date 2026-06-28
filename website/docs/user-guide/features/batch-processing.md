@@ -83,7 +83,7 @@ Entries can optionally include:
 
 | Parameter | Description |
 |-----------|-------------|
-| `--reasoning_effort` | Effort level: `low`, `medium`, `high`, `extra_high` |
+| `--reasoning_effort` | Effort level: `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
 | `--reasoning_disabled` | Completely disable reasoning/thinking tokens |
 
 ### Advanced Options

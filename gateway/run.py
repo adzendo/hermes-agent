@@ -4051,7 +4051,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         """Load reasoning effort from config.yaml.
 
         Reads agent.reasoning_effort from config.yaml. Official effort values
-        are "low", "medium", "high", and "extra_high"; legacy aliases are
+        are "minimal", "low", "medium", "high", "xhigh", and "max"; legacy aliases are
         normalized by parse_reasoning_effort(). Returns None to use default
         (medium).
         """

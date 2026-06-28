@@ -71,7 +71,9 @@ class OpenCodeGoProfile(ProviderProfile):
             from hermes_constants import canonicalize_reasoning_effort
 
             effort = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-            if effort == "extra_high":
+            if effort == "minimal":
+                top_level["reasoning_effort"] = "low"
+            elif effort in {"xhigh", "max"}:
                 top_level["reasoning_effort"] = "high"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort
@@ -97,7 +99,9 @@ class OpenCodeGoProfile(ProviderProfile):
             from hermes_constants import canonicalize_reasoning_effort
 
             effort = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
-            if effort == "extra_high":
+            if effort == "minimal":
+                top_level["reasoning_effort"] = "low"
+            elif effort in {"xhigh", "max"}:
                 top_level["reasoning_effort"] = "max"
             elif effort in {"low", "medium", "high"}:
                 top_level["reasoning_effort"] = effort

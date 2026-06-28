@@ -1254,7 +1254,7 @@ Control how much "thinking" the model does before responding:
 
 ```yaml
 agent:
-  reasoning_effort: ""   # empty = medium (default). Options: low, medium, high, extra_high
+  reasoning_effort: ""   # empty = medium (default). Options: minimal, low, medium, high, xhigh, max
 ```
 
 When unset (default), reasoning effort defaults to "medium" — a balanced level that works well for most tasks. Setting a value overrides it — higher reasoning effort gives better results on complex tasks at the cost of more tokens and latency.
@@ -1262,11 +1262,11 @@ When unset (default), reasoning effort defaults to "medium" — a balanced level
 :::note Adaptive-thinking models (Claude 4.6+, Fable/Mythos-class) over OpenRouter
 These models use *adaptive* thinking and don't accept the usual `reasoning.effort`
 field — OpenRouter ignores it for them. Hermes transparently routes your
-`reasoning_effort` to OpenRouter's `verbosity` parameter instead (which maps to
-Anthropic's `output_config.effort`), so the same `low`/`medium`/`high`/`extra_high`
-knob keeps working — no extra configuration needed. Unset leaves the model on
-its own adaptive default. Provider-specific wire values such as `max` are mapped
-internally and are not selectable `reasoning_effort` values. The native
+`reasoning_effort` to provider-specific wire parameters instead, so the same
+`low`/`medium`/`high`/`xhigh`/`max` knob keeps working with provider-specific
+clamping — no extra configuration needed. Unset leaves the model on
+its own adaptive default. Provider-specific wire values such as `xhigh` and `max`
+are selectable only when the active model advertises them. The native
 Anthropic provider already controls effort directly and is unaffected.
 :::
 
@@ -1275,7 +1275,8 @@ You can also change the reasoning effort at runtime with the `/reasoning` comman
 ```
 /reasoning           # Show current effort level and display state
 /reasoning high      # Set reasoning effort to high
-/reasoning extra high # Set reasoning effort to Extra High
+/reasoning xhigh     # Set reasoning effort to xhigh
+/reasoning max       # Set reasoning effort to max
 /reasoning show      # Show model thinking above each response
 /reasoning hide      # Hide model thinking
 ```

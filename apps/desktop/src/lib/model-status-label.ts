@@ -1,15 +1,15 @@
 const REASONING_LABELS: Record<string, string> = {
-  none: 'Off',
-  minimal: 'Low',
-  low: 'Low',
-  medium: 'Med',
-  high: 'High',
-  xhigh: 'Extra High',
-  'x high': 'Extra High',
-  'extra high': 'Extra High',
-  extra_high: 'Extra High',
-  'extra-high': 'Extra High',
-  max: 'Extra High'
+  none: 'none',
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  'x high': 'xhigh',
+  'extra high': 'xhigh',
+  extra_high: 'xhigh',
+  'extra-high': 'xhigh',
+  max: 'max'
 }
 
 export function reasoningEffortLabel(effort: string): string {
@@ -121,7 +121,7 @@ export function formatModelStatusLabel(
 
   // Always surface the effort (empty = Hermes default of medium) so the
   // current reasoning level is visible at a glance, not just when non-default.
-  parts.push(reasoningEffortLabel(options?.reasoningEffort ?? '') || 'Med')
+  parts.push(reasoningEffortLabel(options?.reasoningEffort ?? '') || 'medium')
 
   return `${name} · ${parts.join(' ')}`
 }

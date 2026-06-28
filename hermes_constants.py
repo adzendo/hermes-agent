@@ -548,7 +548,7 @@ def apply_subprocess_home_env(env: dict[str, str]) -> None:
         env["HOME"] = home
 
 
-VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "extra_high", "max")
+VALID_REASONING_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max")
 
 _REASONING_EFFORT_ALIASES = {
     "minimal": "minimal",
@@ -557,33 +557,25 @@ _REASONING_EFFORT_ALIASES = {
     "medium": "medium",
     "med": "medium",
     "high": "high",
-    "extra high": "extra_high",
-    "extra_high": "extra_high",
-    "extra-high": "extra_high",
-    "xhigh": "extra_high",
-    "x high": "extra_high",
-    "x-high": "extra_high",
+    "extra high": "xhigh",
+    "extra_high": "xhigh",
+    "extra-high": "xhigh",
+    "xhigh": "xhigh",
+    "x high": "xhigh",
+    "x-high": "xhigh",
     "max": "max",
     "maximum": "max",
 }
 
-_REASONING_EFFORT_LABELS = {
-    "minimal": "Minimal",
-    "low": "Low",
-    "medium": "Medium",
-    "high": "High",
-    "extra_high": "Extra High",
-    "max": "Max",
-}
+_REASONING_EFFORT_LABELS = {effort: effort for effort in VALID_REASONING_EFFORTS}
 
 
 def canonicalize_reasoning_effort(effort: str) -> str | None:
-    """Return Hermes' canonical reasoning effort value, or None.
+    """Return Hermes' canonical provider-style reasoning effort value.
 
-    Hermes stores and routes the official GPT-5.5/Codex effort set as
-    ``low``, ``medium``, ``high``, and ``extra_high``. Legacy UI/config
-    spellings are accepted as aliases for compatibility, but are never
-    advertised as selectable effort levels.
+    Hermes now stores and displays raw provider-style tags (``minimal``, ``low``,
+    ``medium``, ``high``, ``xhigh``, ``max``). Older UI/config spellings such as
+    ``extra_high`` remain accepted as hidden compatibility aliases for ``xhigh``.
     """
     if not effort or not str(effort).strip():
         return None
@@ -593,18 +585,112 @@ def canonicalize_reasoning_effort(effort: str) -> str | None:
 
 
 def reasoning_effort_display_label(effort: str) -> str:
-    """Return the user-facing label for a reasoning effort value."""
+    """Return the user-facing/provider-style tag for a reasoning effort value."""
     canonical = canonicalize_reasoning_effort(effort)
     if canonical:
         return _REASONING_EFFORT_LABELS[canonical]
     return str(effort or "").strip()
 
 
+def codex_reasoning_effort_wire_value(effort: str) -> str | None:
+    """Return the OpenAI Codex/GPT-5.5 reasoning.effort wire value."""
+    canonical = canonicalize_reasoning_effort(effort)
+    if canonical in {"minimal", "low", "medium", "high", "xhigh"}:
+        return canonical
+    if canonical == "max":
+        return "xhigh"
+    return None
+
+
+def anthropic_reasoning_effort_wire_value(effort: str) -> str | None:
+    """Return the Anthropic/Claude adaptive-thinking wire effort."""
+    canonical = canonicalize_reasoning_effort(effort)
+    if canonical == "minimal":
+        return "low"
+    if canonical in {"xhigh", "max"}:
+        return "max"
+    if canonical in {"low", "medium", "high"}:
+        return canonical
+    return None
+
+
+def xai_reasoning_effort_wire_value(effort: str) -> str | None:
+    """Return the current xAI Responses reasoning effort wire value."""
+    canonical = canonicalize_reasoning_effort(effort)
+    if canonical == "minimal":
+        return "low"
+    if canonical in {"xhigh", "max"}:
+        return "high"
+    if canonical in {"low", "medium", "high"}:
+        return canonical
+    return None
+
+
+def gemini_thinking_config_for_reasoning(
+    model: str,
+    reasoning_config: dict | None,
+) -> dict | None:
+    """Translate Hermes reasoning config to Gemini native thinkingConfig.
+
+    Gemini's model families expose different sets of ``thinkingLevel`` values:
+    3.5 Flash accepts ``minimal``/``low``/``medium``/``high``; 3.1 Pro is
+    stricter and tops out at ``high``. Hermes' stronger generic modes clamp to
+    ``high`` for Gemini instead of forwarding invalid provider labels.
+    """
+    if reasoning_config is None or not isinstance(reasoning_config, dict):
+        return None
+
+    normalized_model = (model or "").strip().lower()
+    if normalized_model.startswith("google/"):
+        normalized_model = normalized_model.split("/", 1)[1]
+
+    if not normalized_model.startswith("gemini"):
+        return None
+
+    if reasoning_config.get("enabled") is False:
+        return {"includeThoughts": False}
+
+    raw_effort = str(reasoning_config.get("effort", "medium") or "medium").strip().lower()
+    if raw_effort == "none":
+        return {"includeThoughts": False}
+
+    canonical = canonicalize_reasoning_effort(raw_effort) or "medium"
+    thinking_config: dict = {"includeThoughts": True}
+
+    # Gemini 2.5 exposes budget controls but not the named 3.x thinking levels.
+    # ``includeThoughts`` alone requests visible thought parts without guessing a
+    # numeric budget.
+    if normalized_model.startswith("gemini-2.5-"):
+        return thinking_config
+
+    if normalized_model.startswith(("gemini-3", "gemini-3.1", "gemini-3.5")):
+        if "flash" in normalized_model:
+            if canonical == "minimal":
+                thinking_config["thinkingLevel"] = "minimal"
+            elif canonical == "low":
+                thinking_config["thinkingLevel"] = "low"
+            elif canonical in {"high", "xhigh", "max"}:
+                thinking_config["thinkingLevel"] = "high"
+            else:
+                thinking_config["thinkingLevel"] = "medium"
+        elif "pro" in normalized_model:
+            if canonical == "low":
+                thinking_config["thinkingLevel"] = "low"
+            elif canonical in {"high", "xhigh", "max"}:
+                thinking_config["thinkingLevel"] = "high"
+            else:
+                thinking_config["thinkingLevel"] = "medium"
+
+    return thinking_config
+
+
 def parse_reasoning_effort(effort: str) -> dict | None:
     """Parse a reasoning effort level into a config dict.
 
-    Official effort levels: "low", "medium", "high", "extra_high".
-    Compatibility aliases: "minimal" → "low", "xhigh"/"max" → "extra_high".
+    Official Hermes efforts: "minimal", "low", "medium", "high",
+    "xhigh", and "max". Compatibility aliases like "extra_high" normalize to
+    the raw GPT-5.5/Codex value "xhigh"; provider-specific clamping is resolved
+    only at the model-call boundary.
     Returns None when the input is empty or unrecognized (caller uses default).
     Returns {"enabled": False} for "none".
     Returns {"enabled": True, "effort": <canonical level>} for valid levels.

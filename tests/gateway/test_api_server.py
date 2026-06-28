@@ -320,11 +320,11 @@ class TestAdapterInit:
         monkeypatch.setattr("gateway.run._resolve_gateway_model", lambda: "gpt-5.5")
         monkeypatch.setattr(
             "gateway.run._load_gateway_config",
-            lambda: {"agent": {"reasoning_effort": "extra_high"}},
+            lambda: {"agent": {"reasoning_effort": "xhigh"}},
         )
         monkeypatch.setattr(
             "gateway.run.GatewayRunner._load_reasoning_config",
-            staticmethod(lambda: {"enabled": True, "effort": "extra_high"}),
+            staticmethod(lambda: {"enabled": True, "effort": "xhigh"}),
         )
         monkeypatch.setattr("gateway.run.GatewayRunner._load_fallback_model", staticmethod(lambda: None))
         monkeypatch.setattr("hermes_cli.tools_config._get_platform_tools", lambda *_: set())
@@ -335,7 +335,7 @@ class TestAdapterInit:
         agent = adapter._create_agent(session_id="api-session")
 
         assert isinstance(agent, FakeAgent)
-        assert captured["reasoning_config"] == {"enabled": True, "effort": "extra_high"}
+        assert captured["reasoning_config"] == {"enabled": True, "effort": "xhigh"}
 
     def test_create_agent_refreshes_max_iterations_from_runtime_config(self, monkeypatch):
         captured = {}

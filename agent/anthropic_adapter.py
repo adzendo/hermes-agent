@@ -55,19 +55,15 @@ def _get_anthropic_sdk():
 
 logger = logging.getLogger(__name__)
 
-THINKING_BUDGET = {"xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
+THINKING_BUDGET = {"max": 32000, "xhigh": 32000, "high": 16000, "medium": 8000, "low": 4000}
 # Hermes effort → Anthropic adaptive-thinking effort (output_config.effort).
-# Anthropic exposes 5 levels on 4.7+: low, medium, high, xhigh, max.
-# Opus/Sonnet 4.6 only expose 4 levels: low, medium, high, max — no xhigh.
-# We preserve xhigh as xhigh on 4.7+ (the recommended default for coding/
-# agentic work) and downgrade it to max on pre-4.7 adaptive models (which
-# is the strongest level they accept).  "minimal" is a legacy alias that
-# maps to low on every model.  See:
-# https://platform.claude.com/docs/en/about-claude/models/migration-guide
+# Anthropic/Claude's strongest named mode is ``max``. OpenAI/Codex-specific
+# ``xhigh`` and legacy ``extra_high`` aliases map to max on Claude instead of
+# being forwarded as provider-invalid/ambiguous strings.
 ADAPTIVE_EFFORT_MAP = {
     "max":     "max",
-    "xhigh":   "xhigh",
-    "extra_high": "xhigh",
+    "xhigh":   "max",
+    "extra_high": "max",
     "high":    "high",
     "medium":  "medium",
     "low":     "low",
@@ -105,9 +101,9 @@ _LEGACY_MANUAL_THINKING_CLAUDE_SUBSTRINGS = (
     "claude-haiku-4-5", "claude-haiku-4.5",
 )
 
-# Older Claude families that DON'T accept the "xhigh" effort level (4.6 only
-# supports low/medium/high/max). xhigh arrived with Opus 4.7. Adaptive models
-# not in this list (4.7, 4.8, fable, future) accept xhigh.
+# Claude 4.6 adaptive-thinking family. They still accept sampling params (unlike
+# 4.7+), and historically also lacked any OpenAI/Codex-style xhigh level. The
+# variable name is retained for compatibility with the sampling guard below.
 _NO_XHIGH_CLAUDE_SUBSTRINGS = (
     "claude-opus-4-6", "claude-opus-4.6",
     "claude-sonnet-4-6", "claude-sonnet-4.6",
@@ -255,20 +251,13 @@ def _supports_adaptive_thinking(model: str) -> bool:
 
 
 def _supports_xhigh_effort(model: str) -> bool:
-    """Return True for models that accept the 'xhigh' adaptive effort level.
+    """Return False for Claude adaptive-thinking wire selection.
 
-    Opus 4.7 introduced xhigh as a distinct level between high and max.
-    Pre-4.7 adaptive models (Opus/Sonnet 4.6) only accept low/medium/high/max
-    and reject xhigh with an HTTP 400. Callers should downgrade xhigh→max
-    when this returns False.
-
-    Defaults unknown adaptive Claude models to accepting xhigh (4.7+ contract);
-    only the 4.6 family and legacy manual-thinking models are excluded.
+    Hermes no longer forwards OpenAI/Codex's ``xhigh`` token to Anthropic.
+    Claude's top mode is ``max``; this helper remains only as a compatibility
+    shim for older callers that still check it before downgrading xhigh→max.
     """
-    if not _supports_adaptive_thinking(model):
-        return False
-    m = model.lower()
-    return not any(v in m for v in _NO_XHIGH_CLAUDE_SUBSTRINGS)
+    return False
 
 
 def _forbids_sampling_params(model: str) -> bool:
@@ -2520,9 +2509,10 @@ def build_anthropic_kwargs(
                     "display": "summarized",
                 }
                 adaptive_effort = ADAPTIVE_EFFORT_MAP.get(effort, "medium")
-                # Downgrade xhigh→max on models that don't list xhigh as a
-                # supported level (Opus/Sonnet 4.6). Opus 4.7+ keeps xhigh.
-                if adaptive_effort == "xhigh" and not _supports_xhigh_effort(model):
+                # Defensive compatibility: older call sites may still yield
+                # ``xhigh``. Anthropic's strongest mode is Max, so never let
+                # Codex/OpenAI-specific xhigh cross this provider boundary.
+                if adaptive_effort == "xhigh":
                     adaptive_effort = "max"
                 kwargs["output_config"] = {
                     "effort": adaptive_effort,

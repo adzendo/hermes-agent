@@ -1272,12 +1272,8 @@ class TestBuildAnthropicKwargs:
         assert kwargs["max_tokens"] == 4096
 
     def test_reasoning_config_downgrades_xhigh_to_max_for_4_6_models(self):
-        # Opus 4.7 added "xhigh" as a distinct effort level (low/medium/high/
-        # xhigh/max). Opus 4.6 only supports low/medium/high/max — sending
-        # "xhigh" there returns an API 400. Preserve the pre-migration
-        # behavior of aliasing xhigh→max on pre-4.7 adaptive models so users
-        # who prefer xhigh as their default don't 400 every request when
-        # switching back to 4.6.
+        # xhigh is an OpenAI/Codex wire token. Claude's strongest public mode is
+        # Max, so Hermes aliases xhigh→max on Anthropic adaptive models.
         kwargs = build_anthropic_kwargs(
             model="claude-sonnet-4-6",
             messages=[{"role": "user", "content": "think harder"}],
@@ -1288,9 +1284,9 @@ class TestBuildAnthropicKwargs:
         assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
         assert kwargs["output_config"] == {"effort": "max"}
 
-    def test_reasoning_config_preserves_xhigh_for_4_7_models(self):
-        # On 4.7+ xhigh is a real level and the recommended default for
-        # coding/agentic work — keep it distinct from max.
+    def test_reasoning_config_maps_xhigh_to_max_for_4_7_models(self):
+        # Anthropic/Claude's strongest public mode is Max; OpenAI/Codex's
+        # xhigh alias must not cross the provider boundary.
         kwargs = build_anthropic_kwargs(
             model="claude-opus-4-7",
             messages=[{"role": "user", "content": "think harder"}],
@@ -1299,7 +1295,7 @@ class TestBuildAnthropicKwargs:
             reasoning_config={"enabled": True, "effort": "xhigh"},
         )
         assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
-        assert kwargs["output_config"] == {"effort": "xhigh"}
+        assert kwargs["output_config"] == {"effort": "max"}
 
     def test_reasoning_config_maps_max_effort_for_4_7_models(self):
         kwargs = build_anthropic_kwargs(
@@ -1355,14 +1351,14 @@ class TestBuildAnthropicKwargs:
 
     def test_fable_class_models_route_as_adaptive_thinking(self):
         """Invariant: unknown/new Claude models default to the modern (4.7+)
-        contract — adaptive thinking, xhigh-capable, sampling-params-forbidden —
+        contract — adaptive thinking, Max as the strongest effort,
+        sampling-params-forbidden —
         without any per-model code change. Named models (claude-fable-5) and
         hypothetical future ones must all classify modern; only the explicit
         legacy list stays on the manual path.
         """
         from agent.anthropic_adapter import (
             _supports_adaptive_thinking,
-            _supports_xhigh_effort,
             _forbids_sampling_params,
             _get_anthropic_max_output,
         )
@@ -1374,7 +1370,6 @@ class TestBuildAnthropicKwargs:
             "anthropic/claude-opus-9",  # hypothetical future numbered model
         ):
             assert _supports_adaptive_thinking(m) is True, m
-            assert _supports_xhigh_effort(m) is True, m
             assert _forbids_sampling_params(m) is True, m
         # 1M-context reasoning model → highest output ceiling.
         assert _get_anthropic_max_output("anthropic/claude-fable-5") == 128_000
