@@ -46,6 +46,14 @@ ACP_REGISTRY_MANIFEST = REPO_ROOT / "acp_registry" / "agent.json"
 # Auto-extracted from noreply emails + manual overrides
 AUTHOR_MAP = {
     "atlas@adzendo.com": "adzendo",  # Atlas-generated commits in the adzendo fork
+    "DavidMetcalfe@users.noreply.github.com": "DavidMetcalfe",
+    "SJWATTS89@OUTLOOK.COM": "lEWFkRAD",
+    "daniel.laforce@argobox.com": "KeyArgo",
+    "konsisumer@users.noreply.github.com": "konsisumer",
+    "naqerl@users.noreply.github.com": "naqerl",
+    "poli.koltsova@gmail.com": "wnuuee1",
+    "redpiggy-cyber@users.noreply.github.com": "redpiggy-cyber",
+    "vinoth12940@users.noreply.github.com": "vinoth12940",
     "8180647+herbalizer404@users.noreply.github.com": "herbalizer404",  # PR #49076 + #51835 salvage (auxiliary compression fallback: 403/session-usage payment errors + honor fallback chain when aux provider auth unavailable)
     "pyxl-dev@users.noreply.github.com": "pyxl-dev",  # PR #52230 salvage (include rate-limit in auxiliary capacity-error fallback gate; #52228)
     "benbenwyb@gmail.com": "benbenlijie",  # PR #47205 salvage (named custom-provider extra_body + Z.AI Coding overload adaptive backoff; #50663)
