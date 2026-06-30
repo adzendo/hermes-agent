@@ -610,6 +610,21 @@ class TestSummaryCallTimeout:
 
         assert timeout == 448.0
 
+    def test_source_context_tokens_scale_timeout_when_prompt_was_pruned(self):
+        """Regression for live Telegram compaction: local pruning/truncation can
+        make the serialized summarizer prompt look small even though the source
+        session pressure was ~196K tokens. Timeout scaling must use that source
+        load too, otherwise Codex keeps hitting the 120s floor.
+        """
+        with patch("agent.context_compressor._get_task_timeout", return_value=120.0), \
+             patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=20_000):
+            timeout = ContextCompressor._summary_call_timeout(
+                "small serialized prompt after pruning",
+                source_tokens=195_874,
+            )
+
+        assert timeout == pytest.approx(391.748)
+
     def test_configured_larger_timeout_remains_floor(self):
         with patch("agent.context_compressor._get_task_timeout", return_value=300.0), \
              patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=10_000):
@@ -630,6 +645,34 @@ class TestSummaryCallTimeout:
             c._generate_summary([{"role": "user", "content": "large live transcript"}])
 
         assert mock_call.call_args.kwargs["timeout"] == 448.0
+
+    def test_compress_passes_current_tokens_to_adaptive_timeout(self):
+        """Compression should scale timeout from the live pre-compression
+        token load, not only from the post-pruning summarizer prompt estimate.
+        """
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "summary"
+        with patch("agent.context_compressor.get_model_context_length", return_value=300000):
+            c = ContextCompressor(
+                model="gpt-5.5",
+                provider="openai-codex",
+                quiet_mode=True,
+                protect_first_n=0,
+                protect_last_n=2,
+            )
+        messages = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"msg {i}"}
+            for i in range(12)
+        ]
+
+        with patch.object(c, "_find_tail_cut_by_tokens", return_value=8), \
+             patch("agent.context_compressor._get_task_timeout", return_value=120.0), \
+             patch("agent.context_compressor.estimate_messages_tokens_rough", return_value=20_000), \
+             patch("agent.context_compressor.call_llm", return_value=mock_response) as mock_call:
+            c.compress(messages, current_tokens=195_874)
+
+        assert mock_call.call_args.kwargs["timeout"] == pytest.approx(391.748)
 
 
 class TestAuthFailureAborts:

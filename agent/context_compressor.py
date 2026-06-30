@@ -1465,13 +1465,16 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
         self._summary_failure_cooldown_until = 0.0  # no cooldown — retry immediately
 
     @staticmethod
-    def _summary_call_timeout(prompt: str) -> float:
+    def _summary_call_timeout(prompt: str, source_tokens: int | None = None) -> float:
         """Return an adaptive timeout for the compression LLM call.
 
         ``auxiliary.compression.timeout`` remains the operator-controlled floor,
         but large compaction prompts need more than the 120s default.  Scale by
-        rough prompt tokens so six-figure-token Telegram sessions do not abort
-        solely because the configured timeout was sized for small smoke tests.
+        the larger of the serialized summarizer prompt and the source context
+        load that triggered compression.  The serialized prompt can be much
+        smaller after local pruning/truncation, while Codex GPT-5.5 with high
+        reasoning can still legitimately need minutes to produce a faithful
+        handoff for a six-figure-token live Telegram session.
         """
         try:
             configured = float(_get_task_timeout("compression"))
@@ -1485,7 +1488,12 @@ Summary generation was unavailable, so this is a best-effort deterministic fallb
             ])
         except Exception:
             prompt_tokens = 0
-        scaled = float(prompt_tokens) / float(_COMPRESSION_SUMMARY_TIMEOUT_TOKENS_PER_SECOND)
+        try:
+            source_token_floor = int(source_tokens or 0)
+        except (TypeError, ValueError):
+            source_token_floor = 0
+        token_basis = max(0, int(prompt_tokens or 0), source_token_floor)
+        scaled = float(token_basis) / float(_COMPRESSION_SUMMARY_TIMEOUT_TOKENS_PER_SECOND)
         return min(
             _COMPRESSION_SUMMARY_TIMEOUT_CAP_SECONDS,
             max(_COMPRESSION_SUMMARY_TIMEOUT_MIN_SECONDS, configured, scaled),
@@ -1696,7 +1704,10 @@ This compaction should PRIORITISE preserving all information related to the focu
                 },
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": int(summary_budget * 1.3),
-                "timeout": self._summary_call_timeout(prompt),
+                "timeout": self._summary_call_timeout(
+                    prompt,
+                    source_tokens=getattr(self, "_summary_source_tokens", None),
+                ),
             }
             if self.summary_model:
                 call_kwargs["model"] = self.summary_model
@@ -1841,7 +1852,10 @@ This compaction should PRIORITISE preserving all information related to the focu
                 else:
                     _reason = "timed out"
                 self._fallback_to_main_for_compression(e, _reason)
-                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)  # retry immediately
+                return self._generate_summary(
+                    turns_to_summarize,
+                    focus_topic=focus_topic,
+                )  # retry immediately
 
             # Unknown-error best-effort retry on main model.  Losing N turns of
             # context is almost always worse than one extra summary attempt, so
@@ -1858,7 +1872,10 @@ This compaction should PRIORITISE preserving all information related to the focu
                 and not getattr(self, "_summary_model_fallen_back", False)
             ):
                 self._fallback_to_main_for_compression(e, "failed")
-                return self._generate_summary(turns_to_summarize, focus_topic=focus_topic)
+                return self._generate_summary(
+                    turns_to_summarize,
+                    focus_topic=focus_topic,
+                )
 
             # Transient errors (timeout, rate limit, network, JSON decode,
             # streaming premature-close) — shorter cooldown for JSON decode and
@@ -2544,7 +2561,30 @@ This compaction should PRIORITISE preserving all information related to the focu
 
         # Phase 3: Generate structured summary
         summary_focus_topic = focus_topic or self._derive_auto_focus_topic(messages)
-        summary = self._generate_summary(turns_to_summarize, focus_topic=summary_focus_topic)
+        try:
+            source_timeout_tokens = int(display_tokens or 0)
+        except (TypeError, ValueError):
+            source_timeout_tokens = 0
+        if source_timeout_tokens <= 0:
+            try:
+                source_timeout_tokens = estimate_messages_tokens_rough(messages)
+            except Exception:
+                source_timeout_tokens = 0
+        _previous_summary_source_tokens = getattr(self, "_summary_source_tokens", None)
+        self._summary_source_tokens = source_timeout_tokens
+        try:
+            summary = self._generate_summary(
+                turns_to_summarize,
+                focus_topic=summary_focus_topic,
+            )
+        finally:
+            if _previous_summary_source_tokens is None:
+                try:
+                    delattr(self, "_summary_source_tokens")
+                except AttributeError:
+                    pass
+            else:
+                self._summary_source_tokens = _previous_summary_source_tokens
 
         # If summary generation failed, behavior splits on
         # ``abort_on_summary_failure`` (config: compression.abort_on_summary_failure):
