@@ -234,6 +234,106 @@ def test_browserbase_does_not_use_gateway_only_configuration():
     assert provider.is_available() is False
 
 
+def test_browserbase_session_uses_configured_context(tmp_path):
+    _install_fake_tools_package()
+    (tmp_path / "config.yaml").write_text(
+        "browser:\n"
+        "  browserbase:\n"
+        "    context_id: ctx_test_123\n"
+        "    persist_context: false\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env.update({
+        "HERMES_HOME": str(tmp_path),
+        "BROWSERBASE_API_KEY": "bb-key",
+        "BROWSERBASE_PROJECT_ID": "bb-project",
+        "BROWSERBASE_PROXIES": "false",
+        "BROWSERBASE_KEEP_ALIVE": "false",
+        "BROWSERBASE_ADVANCED_STEALTH": "true",
+    })
+
+    captured_payloads = []
+
+    class _Response:
+        ok = True
+        status_code = 200
+        text = "{}"
+
+        @staticmethod
+        def json():
+            return {"id": "session-123", "connectUrl": "ws://browserbase.example/devtools/browser/abc"}
+
+    def _post(_url, *, headers=None, json=None, timeout=None):
+        captured_payloads.append(json)
+        return _Response()
+
+    with patch.dict(os.environ, env, clear=True):
+        browserbase_module = _load_plugin_module(
+            "plugins.browser.browserbase.provider",
+            "browser/browserbase/provider.py",
+        )
+        provider = browserbase_module.BrowserbaseBrowserProvider()
+        with patch.object(browserbase_module.requests, "post", side_effect=_post):
+            session = provider.create_session("task-browserbase-context")
+
+    assert session["bb_session_id"] == "session-123"
+    assert captured_payloads == [
+        {
+            "projectId": "bb-project",
+            "browserSettings": {
+                "context": {
+                    "id": "ctx_test_123",
+                    "persist": False,
+                },
+                "advancedStealth": True,
+            },
+        }
+    ]
+
+
+def test_browserbase_session_omits_context_when_unset(tmp_path):
+    _install_fake_tools_package()
+    (tmp_path / "config.yaml").write_text("browser:\n  browserbase:\n    context_id: ''\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env.update({
+        "HERMES_HOME": str(tmp_path),
+        "BROWSERBASE_API_KEY": "bb-key",
+        "BROWSERBASE_PROJECT_ID": "bb-project",
+        "BROWSERBASE_PROXIES": "false",
+        "BROWSERBASE_KEEP_ALIVE": "false",
+    })
+
+    captured_payloads = []
+
+    class _Response:
+        ok = True
+        status_code = 200
+        text = "{}"
+
+        @staticmethod
+        def json():
+            return {"id": "session-456", "connectUrl": "ws://browserbase.example/devtools/browser/def"}
+
+    def _post(_url, *, headers=None, json=None, timeout=None):
+        captured_payloads.append(json)
+        return _Response()
+
+    with patch.dict(os.environ, env, clear=True):
+        browserbase_module = _load_plugin_module(
+            "plugins.browser.browserbase.provider",
+            "browser/browserbase/provider.py",
+        )
+        provider = browserbase_module.BrowserbaseBrowserProvider()
+        with patch.object(browserbase_module.requests, "post", side_effect=_post):
+            session = provider.create_session("task-browserbase-no-context")
+
+    assert session["bb_session_id"] == "session-456"
+    assert captured_payloads == [{"projectId": "bb-project"}]
+
+
 def test_browser_use_availability_skips_refresh_for_expired_cached_gateway_token(tmp_path, monkeypatch):
     _install_fake_tools_package()
     monkeypatch.delenv("TOOL_GATEWAY_USER_TOKEN", raising=False)

@@ -1175,6 +1175,14 @@ DEFAULT_CONFIG = {
             "rewrite_loopback_urls": False,
             "loopback_host_alias": "host.docker.internal",
         },
+        "browserbase": {
+            # Optional Browserbase Context ID for persistent auth/session state.
+            # The API key and project ID still belong in ~/.hermes/.env.
+            "context_id": "",
+            # Persist new cookies/storage back to the Browserbase Context when
+            # the session closes. Set false for read-only use of saved auth.
+            "persist_context": True,
+        },
     },
 
     # Filesystem checkpoints — automatic snapshots before destructive file ops.
