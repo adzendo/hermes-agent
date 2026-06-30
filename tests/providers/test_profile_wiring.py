@@ -158,7 +158,7 @@ class TestOpenRouterProfileParity:
         assert "reasoning" not in kw.get("extra_body", {})
         assert kw["verbosity"] == "max"
 
-    def test_anthropic_48_preserves_xhigh_and_max_verbosity_distinction(self, transport):
+    def test_anthropic_48_maps_high_end_aliases_to_max_verbosity(self, transport):
         for effort in ("xhigh", "max"):
             kw = transport.build_kwargs(
                 model="anthropic/claude-opus-4.8",
@@ -169,7 +169,7 @@ class TestOpenRouterProfileParity:
                 reasoning_config={"enabled": True, "effort": effort},
             )
             assert "reasoning" not in kw.get("extra_body", {})
-            assert kw["verbosity"] == effort
+            assert kw["verbosity"] == "max"
 
 
 class TestNousProfileParity:

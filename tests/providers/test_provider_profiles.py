@@ -309,10 +309,11 @@ class TestOpenRouterProfile:
         return mod._anthropic_reasoning_is_mandatory(model)
 
     def test_mandatory_anthropic_effort_routes_to_verbosity(self):
-        """effort set + reasoning enabled → top-level verbosity == effort,
+        """effort set + reasoning enabled → top-level Anthropic verbosity,
         and NO reasoning field in extra_body.
 
-        Covers the supported Anthropic adaptive wire range. ``minimal`` is a
+        Covers the supported Anthropic adaptive wire range. ``xhigh`` is a
+        Hermes/Codex tier that resolves to Anthropic ``max``; ``minimal`` is a
         legacy Hermes config value and resolves to Anthropic ``low``.
         """
         p = get_provider_profile("openrouter")
@@ -324,7 +325,8 @@ class TestOpenRouterProfile:
                 supports_reasoning=True,
                 model=model,
             )
-            assert tl["verbosity"] == effort, (effort, tl)
+            expected = "max" if effort == "xhigh" else effort
+            assert tl["verbosity"] == expected, (effort, tl)
             assert "reasoning" not in eb, (effort, eb)
 
     def test_mandatory_anthropic_minimal_routes_to_low_verbosity(self):
@@ -348,13 +350,12 @@ class TestOpenRouterProfile:
             supports_reasoning=True,
             model="anthropic/claude-fable-5",
         )
-        assert tl["verbosity"] == "xhigh"
+        assert tl["verbosity"] == "max"
         assert "reasoning" not in eb
 
-    def test_mandatory_anthropic_verbosity_is_value_agnostic_passthrough(self):
-        """The mapping preserves the real Anthropic extended scale. The OpenAI
-        SDK type only literals ``low|medium|high`` but it's a TypedDict (no
-        runtime validation), so xhigh/max must reach the wire untouched."""
+    def test_mandatory_anthropic_verbosity_maps_high_end_aliases_to_max(self):
+        """OpenRouter's mandatory Anthropic path must map high-end Hermes
+        aliases to Anthropic's strongest wire tier."""
         p = get_provider_profile("openrouter")
         for effort in ("xhigh", "max"):
             _, tl = p.build_api_kwargs_extras(
@@ -362,7 +363,7 @@ class TestOpenRouterProfile:
                 supports_reasoning=True,
                 model="anthropic/claude-fable-5",
             )
-            assert tl["verbosity"] == effort
+            assert tl["verbosity"] == "max"
 
     def test_mandatory_anthropic_no_verbosity_when_effort_absent(self):
         """No effort / none / disabled → no verbosity emitted, so the model

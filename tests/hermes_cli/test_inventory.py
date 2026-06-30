@@ -349,13 +349,13 @@ def test_build_models_payload_capabilities_include_model_specific_efforts():
 
     openrouter = next(row for row in payload["providers"] if row["slug"] == "openrouter")
     anthropic_caps = openrouter["capabilities"]["anthropic/claude-sonnet-4.8"]
-    assert anthropic_caps["reasoning_efforts"] == ["low", "medium", "high", "xhigh", "max"]
+    assert anthropic_caps["reasoning_efforts"] == ["low", "medium", "high", "max"]
     gpt_caps = openrouter["capabilities"]["openai/gpt-5.5"]
     assert gpt_caps["reasoning_efforts"] == ["low", "medium", "high", "xhigh"]
 
     bedrock = next(row for row in payload["providers"] if row["slug"] == "bedrock")
     bedrock_caps = bedrock["capabilities"]["global.anthropic.claude-opus-4-8"]
-    assert bedrock_caps["reasoning_efforts"] == ["low", "medium", "high", "xhigh", "max"]
+    assert bedrock_caps["reasoning_efforts"] == ["low", "medium", "high", "max"]
 
     copilot = next(row for row in payload["providers"] if row["slug"] == "copilot")
     copilot_caps = copilot["capabilities"]["claude-sonnet-4.6"]

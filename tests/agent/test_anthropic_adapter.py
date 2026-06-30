@@ -585,6 +585,15 @@ class TestWriteClaudeCodeCredentials:
 
 
 class TestResolveWithRefresh:
+    @pytest.fixture(autouse=True)
+    def no_keychain(self, monkeypatch):
+        # These tests construct isolated credential files under tmp_path; a real
+        # macOS Keychain token on the developer machine must not shadow them.
+        monkeypatch.setattr(
+            "agent.anthropic_adapter._read_claude_code_credentials_from_keychain",
+            lambda: None,
+        )
+
     def test_auto_refresh_on_expired_creds(self, monkeypatch, tmp_path):
         """When cred file has expired token + refresh token, auto-refresh is attempted."""
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -1301,9 +1310,10 @@ class TestBuildAnthropicKwargs:
         assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
         assert kwargs["output_config"] == {"effort": "max"}
 
-    def test_reasoning_config_preserves_xhigh_for_4_7_models(self):
-        # On 4.7+ xhigh is a real level and the recommended default for
-        # coding/agentic work — keep it distinct from max.
+    def test_reasoning_config_maps_xhigh_to_max_for_4_7_models(self):
+        # Hermes keeps xhigh as a Codex/GPT-5.5 canonical tier, but the
+        # Anthropic adapter's provider edge maps high-end aliases to Claude's
+        # strongest adaptive-thinking wire effort, max.
         kwargs = build_anthropic_kwargs(
             model="claude-opus-4-7",
             messages=[{"role": "user", "content": "think harder"}],
@@ -1312,7 +1322,7 @@ class TestBuildAnthropicKwargs:
             reasoning_config={"enabled": True, "effort": "xhigh"},
         )
         assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
-        assert kwargs["output_config"] == {"effort": "xhigh"}
+        assert kwargs["output_config"] == {"effort": "max"}
 
     def test_reasoning_config_maps_max_effort_for_4_7_models(self):
         kwargs = build_anthropic_kwargs(

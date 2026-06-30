@@ -170,7 +170,7 @@ gateway:
     level_disabled:            "nessuno (disattivato)"
     scope_session:             "override di sessione"
     scope_global:              "configurazione globale"
-    status:                    "🧠 **Impostazioni di reasoning**\n\n**Sforzo:** `{level}`\n**Ambito:** {scope}\n**Visualizzazione:** {display}\n\n_Uso:_ `/reasoning <level|reset|show|hide> [--global]`"
+    status:                    "🧠 **Impostazioni di reasoning**\n\n**Sforzo:** `{level}`\n**Ambito:** {scope}\n**Visualizzazione:** {display}\n**Valido per il modello corrente:** {levels}\n\n_Uso:_ `/reasoning <level|reset|show|hide> [--global]`"
     display_on:                "attivo ✓"
     display_off:               "disattivato"
     display_set_on:            "🧠 ✓ Visualizzazione del reasoning: **ATTIVA**\nIl pensiero del modello verrà mostrato prima di ogni risposta su **{platform}**."

@@ -170,7 +170,7 @@ gateway:
     level_disabled:            "none (отключено)"
     scope_session:             "переопределение сеанса"
     scope_global:              "глобальная конфигурация"
-    status:                    "🧠 **Настройки рассуждений**\n\n**Усилия:** `{level}`\n**Область:** {scope}\n**Отображение:** {display}\n\n_Использование:_ `/reasoning <level|reset|show|hide> [--global]`"
+    status:                    "🧠 **Настройки рассуждений**\n\n**Усилия:** `{level}`\n**Область:** {scope}\n**Отображение:** {display}\n**Допустимо для текущей модели:** {levels}\n\n_Использование:_ `/reasoning <level|reset|show|hide> [--global]`"
     display_on:                "включено ✓"
     display_off:               "выключено"
     display_set_on:            "🧠 ✓ Отображение рассуждений: **ВКЛ.**\nМысли модели будут показываться перед каждым ответом на **{platform}**."
