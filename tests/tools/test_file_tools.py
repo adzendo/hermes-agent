@@ -433,9 +433,18 @@ class TestSearchHints:
 class TestSensitivePathCheck:
     """Verify that _check_sensitive_path blocks writes to protected locations."""
 
+    def _fake_config_path(self, tmp_path):
+        # On macOS pytest's default tmp_path resolves under /private/var/..., which
+        # intentionally trips the generic sensitive-system-path guard before the
+        # Hermes-config-specific guard.  Put this fixture under /tmp (/private/tmp)
+        # so these tests exercise the config guard deterministically.
+        fake_root = os.path.join("/tmp", f"hermes-file-tools-{tmp_path.name}")
+        os.makedirs(fake_root, exist_ok=True)
+        return os.path.join(fake_root, "config.yaml")
+
     def test_hermes_config_blocked_for_write_file(self, tmp_path, monkeypatch):
-        fake_config = tmp_path / "config.yaml"
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
+        fake_config = self._fake_config_path(tmp_path)
+        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", fake_config)
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
@@ -444,19 +453,20 @@ class TestSensitivePathCheck:
         assert "Hermes config" in result["error"]
 
     def test_hermes_config_blocked_via_tilde_path(self, tmp_path, monkeypatch):
-        fake_config = tmp_path / "config.yaml"
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
+        fake_config = self._fake_config_path(tmp_path)
+        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", fake_config)
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import write_file_tool
-        result = json.loads(write_file_tool(str(fake_config), "approvals:\n  mode: off\n"))
+        result = json.loads(write_file_tool(fake_config, "approvals:\n  mode: off\n"))
         assert "error" in result
         assert "Hermes config" in result["error"]
 
     def test_hermes_config_blocked_for_patch(self, tmp_path, monkeypatch):
-        fake_config = tmp_path / "config.yaml"
-        fake_config.write_text("approvals:\n  mode: manual\n")
-        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", str(fake_config))
+        fake_config = self._fake_config_path(tmp_path)
+        with open(fake_config, "w", encoding="utf-8") as f:
+            f.write("approvals:\n  mode: manual\n")
+        monkeypatch.setattr("tools.file_tools._hermes_config_resolved", fake_config)
         monkeypatch.setattr("tools.file_tools._hermes_config_resolved_loaded", True)
 
         from tools.file_tools import patch_tool
