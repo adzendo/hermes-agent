@@ -49,6 +49,21 @@ BROWSERBASE_PROJECT_ID=your-project-id-here
 
 Get your credentials at [browserbase.com](https://browserbase.com).
 
+To reuse a logged-in Browserbase profile, create a Browserbase **Context**, log in
+once via Session Live View, then save the Context ID in `config.yaml`:
+
+```yaml
+browser:
+  cloud_provider: browserbase
+  browserbase:
+    context_id: ctx_abc123
+    persist_context: true
+```
+
+`persist_context: true` saves new cookies/storage back to the Context when the
+session closes. Set it to `false` for read-only use of an existing authenticated
+Context.
+
 ### Browser Use cloud mode
 
 To use Browser Use as your cloud browser provider, add:
@@ -356,7 +371,18 @@ google-chrome \
   --no-default-browser-check &
 ```
 
-Then launch the Hermes CLI and run `/browser connect`.
+Then launch the Hermes CLI and run `/browser connect`. For gateway sessions
+(Telegram, Discord, WebUI, etc.), configure the endpoint persistently instead:
+
+```yaml
+# ~/.hermes/config.yaml
+browser:
+  cdp_url: http://127.0.0.1:9222
+```
+
+When `browser.cdp_url` is set, browser tools prefer that local CDP browser over
+cloud providers such as Browserbase. Clear it to return to cloud/local automatic
+selection.
 
 **Why `--user-data-dir`?** Without it, launching a Chromium-family browser while a regular instance is already running typically opens a new window on the existing process — and that existing process was not started with `--remote-debugging-port`, so port 9222 never opens. A dedicated user-data-dir forces a fresh browser process where the debug port actually listens. `--no-first-run --no-default-browser-check` skips the first-launch wizard for the fresh profile.
 :::
