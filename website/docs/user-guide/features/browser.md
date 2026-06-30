@@ -49,6 +49,21 @@ BROWSERBASE_PROJECT_ID=your-project-id-here
 
 Get your credentials at [browserbase.com](https://browserbase.com).
 
+To reuse a logged-in Browserbase profile, create a Browserbase **Context**, log in
+once via Session Live View, then save the Context ID in `config.yaml`:
+
+```yaml
+browser:
+  cloud_provider: browserbase
+  browserbase:
+    context_id: ctx_abc123
+    persist_context: true
+```
+
+`persist_context: true` saves new cookies/storage back to the Context when the
+session closes. Set it to `false` for read-only use of an existing authenticated
+Context.
+
 ### Browser Use cloud mode
 
 To use Browser Use as your cloud browser provider, add:
@@ -184,6 +199,25 @@ Then set in `~/.hermes/.env`:
 ```bash
 CAMOFOX_URL=http://localhost:9377
 ```
+
+If Camofox is running in Docker and you want it to open web apps served from the host machine, enable loopback rewriting. `CAMOFOX_URL` should still point at the host-published control API, but page URLs such as `http://127.0.0.1:3000` must be opened from inside the container as `http://host.docker.internal:3000`:
+
+```yaml
+# ~/.hermes/config.yaml
+browser:
+  camofox:
+    rewrite_loopback_urls: true
+    loopback_host_alias: host.docker.internal  # default; use a LAN IP if needed
+```
+
+Equivalent env vars:
+
+```bash
+CAMOFOX_REWRITE_LOOPBACK_URLS=true
+CAMOFOX_LOOPBACK_HOST_ALIAS=host.docker.internal
+```
+
+The rewrite only applies to page navigation URLs with loopback hosts (`localhost`, `127.0.0.1`, `::1`). It does not change `CAMOFOX_URL`. Leave it disabled for non-Docker Camofox installs, where the browser already runs on the host and loopback URLs are correct.
 
 Or configure via `hermes tools` → Browser Automation → Camofox.
 
@@ -337,7 +371,18 @@ google-chrome \
   --no-default-browser-check &
 ```
 
-Then launch the Hermes CLI and run `/browser connect`.
+Then launch the Hermes CLI and run `/browser connect`. For gateway sessions
+(Telegram, Discord, WebUI, etc.), configure the endpoint persistently instead:
+
+```yaml
+# ~/.hermes/config.yaml
+browser:
+  cdp_url: http://127.0.0.1:9222
+```
+
+When `browser.cdp_url` is set, browser tools prefer that local CDP browser over
+cloud providers such as Browserbase. Clear it to return to cloud/local automatic
+selection.
 
 **Why `--user-data-dir`?** Without it, launching a Chromium-family browser while a regular instance is already running typically opens a new window on the existing process — and that existing process was not started with `--remote-debugging-port`, so port 9222 never opens. A dedicated user-data-dir forces a fresh browser process where the debug port actually listens. `--no-first-run --no-default-browser-check` skips the first-launch wizard for the fresh profile.
 :::
@@ -376,9 +421,9 @@ BROWSERBASE_ADVANCED_STEALTH=false
 # Session reconnection after disconnects — requires paid plan (default: "true")
 BROWSERBASE_KEEP_ALIVE=true
 
-# Custom session timeout in milliseconds (default: project default)
-# Examples: 600000 (10min), 1800000 (30min)
-BROWSERBASE_SESSION_TIMEOUT=600000
+# Custom session timeout in seconds (max 21600 = 6 hours) (default: project default)
+# Examples: 600 (10min), 1800 (30min), 21600 (6h max)
+BROWSERBASE_SESSION_TIMEOUT=1800
 
 # Inactivity timeout before auto-cleanup in seconds (default: 120)
 BROWSER_INACTIVITY_TIMEOUT=120

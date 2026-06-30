@@ -10,7 +10,7 @@ reasoning configuration, temperature handling, and extra_body assembly.
 """
 
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from agent.lmstudio_reasoning import resolve_lmstudio_effort
 from agent.moonshot_schema import is_moonshot_model, sanitize_moonshot_tools
@@ -21,58 +21,9 @@ from agent.transports.types import NormalizedResponse, ToolCall, Usage
 
 def _build_gemini_thinking_config(model: str, reasoning_config: dict | None) -> dict | None:
     """Translate Hermes/OpenRouter-style reasoning config to Gemini thinkingConfig."""
-    if reasoning_config is None or not isinstance(reasoning_config, dict):
-        return None
+    from hermes_constants import gemini_thinking_config_for_reasoning
 
-    normalized_model = (model or "").strip().lower()
-    if normalized_model.startswith("google/"):
-        normalized_model = normalized_model.split("/", 1)[1]
-
-    # ``thinking_config`` is a Gemini-only request parameter. The same
-    # ``gemini`` provider also serves Gemma (and historically PaLM/Bard);
-    # those reject the field with HTTP 400 "Unknown name 'thinking_config':
-    # Cannot find field" — including the polite ``{"includeThoughts": False}``
-    # form. Omit the field entirely on non-Gemini models. (#17426)
-    if not normalized_model.startswith("gemini"):
-        return None
-
-    if reasoning_config.get("enabled") is False:
-        # Gemini can hide thought parts even when internal thinking still
-        # happens; omit thinkingLevel to avoid model-specific validation quirks.
-        return {"includeThoughts": False}
-
-    effort = str(reasoning_config.get("effort", "medium") or "medium").strip().lower()
-    if effort == "none":
-        return {"includeThoughts": False}
-
-    thinking_config: Dict[str, Any] = {"includeThoughts": True}
-
-    # Gemini 2.5 accepts thinkingBudget; don't guess a budget from Hermes'
-    # coarse effort levels. ``includeThoughts`` alone is enough to surface
-    # thought parts without risking request validation errors.
-    if normalized_model.startswith("gemini-2.5-"):
-        return thinking_config
-
-    if effort not in {"minimal", "low", "medium", "high", "xhigh"}:
-        effort = "medium"
-
-    # Gemini 3 Flash documents low/medium/high thinking levels; Gemini 3 Pro
-    # is stricter (low/high). Clamp Hermes' wider effort set to what each
-    # family accepts so we never forward an undocumented level verbatim.
-    if normalized_model.startswith(("gemini-3", "gemini-3.1")):
-        if "flash" in normalized_model:
-            if effort in {"minimal", "low"}:
-                thinking_config["thinkingLevel"] = "low"
-            elif effort in {"high", "xhigh"}:
-                thinking_config["thinkingLevel"] = "high"
-            else:
-                thinking_config["thinkingLevel"] = "medium"
-        elif "pro" in normalized_model:
-            thinking_config["thinkingLevel"] = (
-                "high" if effort in {"high", "xhigh"} else "low"
-            )
-
-    return thinking_config
+    return gemini_thinking_config_for_reasoning(model, reasoning_config)
 
 
 def _snake_case_gemini_thinking_config(config: dict | None) -> dict | None:
@@ -99,6 +50,22 @@ def _is_gemini_openai_compat_base_url(base_url: Any) -> bool:
     return normalized.endswith("/openai")
 
 
+def _model_consumes_thought_signature(model: Any) -> bool:
+    """True when the outgoing model is a Gemini family model that requires
+    ``extra_content`` (thought_signature) to be replayed on tool calls.
+
+    Gemini 3 thinking models attach ``extra_content`` to each tool call and
+    reject subsequent requests with HTTP 400 if it is missing. Every other
+    strict OpenAI-compatible provider (Fireworks, Mistral, ...) rejects the
+    request with 400 if ``extra_content`` *is* present. So the field must be
+    kept only when the target model is itself Gemini-family, and stripped
+    otherwise — including when a non-Gemini model inherits stale Gemini
+    ``extra_content`` from earlier in a mixed-provider session.
+    """
+    m = str(model or "").lower()
+    return "gemini" in m or "gemma" in m
+
+
 class ChatCompletionsTransport(ProviderTransport):
     """Transport for api_mode='chat_completions'.
 
@@ -119,6 +86,14 @@ class ChatCompletionsTransport(ProviderTransport):
         - Codex Responses API fields: ``codex_reasoning_items`` /
           ``codex_message_items`` on the message, ``call_id`` /
           ``response_item_id`` on ``tool_calls`` entries.
+        - ``extra_content`` on ``tool_calls`` (Gemini thought_signature) —
+          stripped unless the outgoing ``model`` is itself Gemini-family.
+          Gemini 3 thinking models attach it for replay, but strict providers
+          (Fireworks, Mistral) reject any payload containing it with
+          ``Extra inputs are not permitted, field: 'messages[N].tool_calls[M].extra_content'``.
+          It must be kept for Gemini targets (replay required) and dropped for
+          everyone else, including non-Gemini models that inherited stale
+          Gemini ``extra_content`` earlier in a mixed-provider session.
         - ``tool_name`` on tool-result messages — written by
           ``make_tool_result_message()`` for the SQLite FTS index, but not
           part of the Chat Completions schema. Strict providers (Fireworks,
@@ -137,6 +112,9 @@ class ChatCompletionsTransport(ProviderTransport):
           ``Extra inputs are not permitted, field: 'messages[N]._empty_recovery_synthetic'``,
           which then poisons every subsequent request in the session.
         """
+        strip_extra_content = not _model_consumes_thought_signature(
+            kwargs.get("model")
+        )
         needs_sanitize = False
         for msg in messages:
             if not isinstance(msg, dict):
@@ -145,6 +123,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 "codex_reasoning_items" in msg
                 or "codex_message_items" in msg
                 or "tool_name" in msg
+                or "timestamp" in msg  # #47868 — strict providers reject this
             ):
                 needs_sanitize = True
                 break
@@ -155,7 +134,9 @@ class ChatCompletionsTransport(ProviderTransport):
             if isinstance(tool_calls, list):
                 for tc in tool_calls:
                     if isinstance(tc, dict) and (
-                        "call_id" in tc or "response_item_id" in tc
+                        "call_id" in tc
+                        or "response_item_id" in tc
+                        or (strip_extra_content and "extra_content" in tc)
                     ):
                         needs_sanitize = True
                         break
@@ -172,6 +153,7 @@ class ChatCompletionsTransport(ProviderTransport):
             msg.pop("codex_reasoning_items", None)
             msg.pop("codex_message_items", None)
             msg.pop("tool_name", None)
+            msg.pop("timestamp", None)  # #47868 — leak into strict providers
             # Drop all Hermes-internal scaffolding markers (``_``-prefixed).
             # OpenAI's message schema has no ``_``-prefixed fields, so this
             # is safe and future-proofs against new markers being added.
@@ -183,6 +165,8 @@ class ChatCompletionsTransport(ProviderTransport):
                     if isinstance(tc, dict):
                         tc.pop("call_id", None)
                         tc.pop("response_item_id", None)
+                        if strip_extra_content:
+                            tc.pop("extra_content", None)
         return sanitized
 
     def convert_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -240,8 +224,10 @@ class ChatCompletionsTransport(ProviderTransport):
             anthropic_max_output: int | None
             extra_body_additions: dict | None
         """
-        # Codex sanitization: drop reasoning_items / call_id / response_item_id
-        sanitized = self.convert_messages(messages)
+        # Codex sanitization: drop reasoning_items / call_id / response_item_id.
+        # Pass model so the Gemini thought_signature (extra_content) is kept for
+        # Gemini targets and stripped for strict non-Gemini providers.
+        sanitized = self.convert_messages(messages, model=model)
 
         # ── Provider profile: single-path when present ──────────────────
         _profile = params.get("provider_profile")
@@ -302,6 +288,8 @@ class ChatCompletionsTransport(ProviderTransport):
 
         # Kimi: top-level reasoning_effort (unless thinking disabled)
         if is_kimi:
+            from hermes_constants import canonicalize_reasoning_effort
+
             _kimi_thinking_off = bool(
                 reasoning_config
                 and isinstance(reasoning_config, dict)
@@ -310,13 +298,17 @@ class ChatCompletionsTransport(ProviderTransport):
             if not _kimi_thinking_off:
                 _kimi_effort = "medium"
                 if reasoning_config and isinstance(reasoning_config, dict):
-                    _e = (reasoning_config.get("effort") or "").strip().lower()
-                    if _e in {"low", "medium", "high"}:
+                    _e = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
+                    if _e in ("xhigh", "max"):
+                        _kimi_effort = "high"
+                    elif _e in {"low", "medium", "high"}:
                         _kimi_effort = _e
                 api_kwargs["reasoning_effort"] = _kimi_effort
 
         # Tencent TokenHub: top-level reasoning_effort (unless thinking disabled)
         if is_tokenhub:
+            from hermes_constants import canonicalize_reasoning_effort
+
             _tokenhub_thinking_off = bool(
                 reasoning_config
                 and isinstance(reasoning_config, dict)
@@ -325,8 +317,10 @@ class ChatCompletionsTransport(ProviderTransport):
             if not _tokenhub_thinking_off:
                 _tokenhub_effort = "high"
                 if reasoning_config and isinstance(reasoning_config, dict):
-                    _e = (reasoning_config.get("effort") or "").strip().lower()
-                    if _e in {"low", "medium", "high"}:
+                    _e = canonicalize_reasoning_effort(reasoning_config.get("effort") or "")
+                    if _e in ("xhigh", "max"):
+                        _tokenhub_effort = "high"
+                    elif _e in {"low", "medium", "high"}:
                         _tokenhub_effort = _e
                 api_kwargs["reasoning_effort"] = _tokenhub_effort
 
@@ -388,7 +382,45 @@ class ChatCompletionsTransport(ProviderTransport):
                 if gh_reasoning is not None:
                     extra_body["reasoning"] = gh_reasoning
             else:
-                extra_body["reasoning"] = {"enabled": True, "effort": "medium"}
+                if not (
+                    reasoning_config
+                    and isinstance(reasoning_config, dict)
+                    and reasoning_config.get("enabled") is False
+                ):
+                    from hermes_constants import (
+                        canonicalize_reasoning_effort,
+                        codex_reasoning_effort_wire_value,
+                        xai_reasoning_effort_wire_value,
+                    )
+
+                    _reasoning_effort = "medium"
+                    if reasoning_config and isinstance(reasoning_config, dict):
+                        _raw_effort = reasoning_config.get("effort") or ""
+                        _model_l = str(model or "").strip().lower()
+                        if provider_name in {"xai", "xai-oauth"} or "grok" in _model_l:
+                            _reasoning_effort = (
+                                xai_reasoning_effort_wire_value(_raw_effort) or "medium"
+                            )
+                        elif (
+                            provider_name in {"openai", "openai-codex", "codex"}
+                            or "gpt-5" in _model_l
+                            or "codex" in _model_l
+                        ):
+                            _reasoning_effort = (
+                                codex_reasoning_effort_wire_value(_raw_effort) or "medium"
+                            )
+                        else:
+                            _canonical = canonicalize_reasoning_effort(_raw_effort) or "medium"
+                            if _canonical == "minimal":
+                                _reasoning_effort = "low"
+                            elif _canonical in {"xhigh", "max"}:
+                                # Unknown OpenAI-compatible reasoning endpoints
+                                # are safest with low/medium/high. Known
+                                # providers override this through profiles.
+                                _reasoning_effort = "high"
+                            else:
+                                _reasoning_effort = _canonical
+                    extra_body["reasoning"] = {"enabled": True, "effort": _reasoning_effort}
 
         if provider_name == "gemini":
             raw_thinking_config = _build_gemini_thinking_config(model, reasoning_config)
@@ -402,10 +434,6 @@ class ChatCompletionsTransport(ProviderTransport):
                     extra_body["extra_body"] = openai_compat_extra
             elif raw_thinking_config:
                 extra_body["thinking_config"] = raw_thinking_config
-        elif provider_name == "google-gemini-cli":
-            thinking_config = _build_gemini_thinking_config(model, reasoning_config)
-            if thinking_config:
-                extra_body["thinking_config"] = thinking_config
 
         # Merge any pre-built extra_body additions
         additions = params.get("extra_body_additions")
@@ -476,13 +504,17 @@ class ChatCompletionsTransport(ProviderTransport):
         ephemeral = params.get("ephemeral_max_output_tokens")
         user_max = params.get("max_tokens")
         anthropic_max = params.get("anthropic_max_output")
+        # Per-model default cap — profiles override get_max_tokens() when
+        # they front several backends with different completion-token limits
+        # (e.g. opencode-go: mimo-v2.5-pro = 131072).
+        profile_max = profile.get_max_tokens(model)
 
         if ephemeral is not None and max_tokens_fn:
             api_kwargs.update(max_tokens_fn(ephemeral))
         elif user_max is not None and max_tokens_fn:
             api_kwargs.update(max_tokens_fn(user_max))
-        elif profile.default_max_tokens and max_tokens_fn:
-            api_kwargs.update(max_tokens_fn(profile.default_max_tokens))
+        elif profile_max and max_tokens_fn:
+            api_kwargs.update(max_tokens_fn(profile_max))
         elif anthropic_max is not None:
             api_kwargs["max_tokens"] = anthropic_max
 
@@ -494,6 +526,7 @@ class ChatCompletionsTransport(ProviderTransport):
                 supports_reasoning=params.get("supports_reasoning", False),
                 qwen_session_metadata=params.get("qwen_session_metadata"),
                 model=model,
+                base_url=params.get("base_url"),
                 ollama_num_ctx=params.get("ollama_num_ctx"),
                 session_id=params.get("session_id"),
             )
@@ -534,7 +567,28 @@ class ChatCompletionsTransport(ProviderTransport):
                     api_kwargs[k] = v
 
         if extra_body:
-            api_kwargs["extra_body"] = extra_body
+            # Native Gemini (generativelanguage.googleapis.com, non-/openai)
+            # speaks Google's REST schema, not OpenAI's. OpenAI-style extra_body
+            # keys (tags, reasoning, provider, plugins, …) are unknown fields
+            # there and Gemini rejects the whole request with a non-retryable
+            # HTTP 400 ("Invalid JSON payload received. Unknown name 'tags'").
+            # This happens when a profile that emits extra_body (e.g. the Nous
+            # profile's portal `tags`) is active but the resolved endpoint is a
+            # Gemini base_url — typical when only Google credentials are set and
+            # a fallback/aux call lands on Gemini. The native client only reads
+            # thinking_config from extra_body, so drop everything else here.
+            try:
+                from agent.gemini_native_adapter import is_native_gemini_base_url
+                _native_gemini = is_native_gemini_base_url(params.get("base_url"))
+            except Exception:
+                _native_gemini = False
+            if _native_gemini:
+                extra_body = {
+                    k: v for k, v in extra_body.items()
+                    if k in ("thinking_config", "thinkingConfig")
+                }
+            if extra_body:
+                api_kwargs["extra_body"] = extra_body
 
         return api_kwargs
 
@@ -606,8 +660,42 @@ class ChatCompletionsTransport(ProviderTransport):
         if rd:
             provider_data["reasoning_details"] = rd
 
+        # OpenAI structured-refusal field. When a model declines, the SDK
+        # populates ``message.refusal`` with the explanation and leaves
+        # ``content`` empty. OpenAI-compatible proxies that front Anthropic /
+        # Bedrock (e.g. Nous Portal) surface a Claude refusal this way — or via
+        # ``finish_reason="content_filter"`` — instead of the native
+        # ``stop_reason="refusal"``. Without capturing it the refusal looks
+        # like an empty response, so the agent loop retries a deterministic
+        # refusal three times and gives up with "no content after retries".
+        # Promote it to content + a ``content_filter`` finish reason so the
+        # loop's refusal handler surfaces it clearly and stops. ``refusal`` is
+        # ``None`` for normal responses, so this is a no-op in the common case.
+        content = msg.content
+        refusal = getattr(msg, "refusal", None)
+        if refusal is None and hasattr(msg, "model_extra"):
+            _msg_extra = getattr(msg, "model_extra", None) or {}
+            if isinstance(_msg_extra, dict):
+                refusal = _msg_extra.get("refusal")
+        if isinstance(refusal, str) and refusal.strip():
+            # Record the refusal explanation regardless — it's useful provider
+            # metadata even when the model also returned a usable payload.
+            provider_data["refusal"] = refusal
+            _has_text = isinstance(content, str) and content.strip()
+            _has_tool_calls = bool(tool_calls)
+            # Only promote to a terminal ``content_filter`` when the refusal is
+            # the *sole* payload — no visible text and no tool calls. A response
+            # that carries real content (or tool calls) alongside a refusal note
+            # is a normal, usable turn: surfacing it as a failed safety refusal
+            # would discard the model's actual work. In the empty-payload case,
+            # adopt the refusal as content so the loop has something to show.
+            if not _has_text and not _has_tool_calls:
+                content = refusal
+                if finish_reason in (None, "stop"):
+                    finish_reason = "content_filter"
+
         return NormalizedResponse(
-            content=msg.content,
+            content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
             reasoning=reasoning,

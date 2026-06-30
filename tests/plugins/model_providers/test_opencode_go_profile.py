@@ -24,7 +24,7 @@ class TestOpenCodeGoKimiReasoning:
             reasoning_config={"enabled": True, "effort": "high"},
             model="kimi-k2.6",
         )
-        assert extra_body == {"thinking": {"type": "enabled"}}
+        assert extra_body == {}
         assert top_level == {"reasoning_effort": "high"}
 
     def test_disabled_emits_thinking_disabled_without_effort(self, opencode_go_profile):
@@ -35,19 +35,20 @@ class TestOpenCodeGoKimiReasoning:
         assert extra_body == {"thinking": {"type": "disabled"}}
         assert top_level == {}
 
-    def test_minimal_effort_enables_thinking_without_effort(self, opencode_go_profile):
-        # "minimal" is not a Moonshot-supported value — drop it, keep thinking on.
+    def test_minimal_effort_normalizes_to_low(self, opencode_go_profile):
+        # Legacy Hermes "minimal" aliases to the official Low effort.
         extra_body, top_level = opencode_go_profile.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": "minimal"},
             model="kimi-k2.6",
         )
-        assert extra_body == {"thinking": {"type": "enabled"}}
-        assert top_level == {}
+        assert extra_body == {}
+        assert top_level == {"reasoning_effort": "low"}
 
     @pytest.mark.parametrize(
         "effort",
         [
             "xhigh",
+            "extra_high",
             "max",
         ],
     )
@@ -56,7 +57,7 @@ class TestOpenCodeGoKimiReasoning:
             reasoning_config={"enabled": True, "effort": effort},
             model="moonshotai/kimi-k2.6",
         )
-        assert extra_body == {"thinking": {"type": "enabled"}}
+        assert extra_body == {}
         assert top_level == {"reasoning_effort": "high"}
 
     def test_low_and_medium_pass_through(self, opencode_go_profile):
@@ -65,7 +66,7 @@ class TestOpenCodeGoKimiReasoning:
                 reasoning_config={"enabled": True, "effort": effort},
                 model="kimi-k2.5",
             )
-            assert extra_body == {"thinking": {"type": "enabled"}}
+            assert extra_body == {}
             assert top_level == {"reasoning_effort": effort}
 
     def test_no_config_preserves_server_default(self, opencode_go_profile):
@@ -85,7 +86,7 @@ class TestOpenCodeGoDeepSeekThinking:
             reasoning_config={"enabled": True, "effort": "high"},
             model="deepseek-v4-pro",
         )
-        assert extra_body == {"thinking": {"type": "enabled"}}
+        assert extra_body == {}
         assert top_level == {"reasoning_effort": "high"}
 
     def test_disabled_emits_thinking_disabled_without_effort(self, opencode_go_profile):
@@ -104,21 +105,21 @@ class TestOpenCodeGoDeepSeekThinking:
         assert extra_body == {"thinking": {"type": "enabled"}}
         assert top_level == {}
 
-    def test_minimal_effort_enables_thinking_without_effort(self, opencode_go_profile):
+    def test_minimal_effort_normalizes_to_low(self, opencode_go_profile):
         extra_body, top_level = opencode_go_profile.build_api_kwargs_extras(
             reasoning_config={"enabled": True, "effort": "minimal"},
             model="deepseek-v4-pro",
         )
-        assert extra_body == {"thinking": {"type": "enabled"}}
-        assert top_level == {}
+        assert extra_body == {}
+        assert top_level == {"reasoning_effort": "low"}
 
     def test_xhigh_and_max_normalize_to_max(self, opencode_go_profile):
-        for effort in ("xhigh", "max"):
+        for effort in ("extra_high", "xhigh", "max"):
             extra_body, top_level = opencode_go_profile.build_api_kwargs_extras(
                 reasoning_config={"enabled": True, "effort": effort},
                 model="deepseek/deepseek-v4-pro",
             )
-            assert extra_body == {"thinking": {"type": "enabled"}}
+            assert extra_body == {}
             assert top_level == {"reasoning_effort": "max"}
 
 
@@ -160,7 +161,7 @@ class TestOpenCodeGoFullKwargsIntegration:
             reasoning_config={"enabled": True, "effort": "high"},
             base_url="https://opencode.ai/zen/go/v1",
         )
-        assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+        assert "extra_body" not in kwargs
         assert kwargs["reasoning_effort"] == "high"
 
     def test_deepseek_thinking_reaches_extra_body_and_top_level(
@@ -176,5 +177,5 @@ class TestOpenCodeGoFullKwargsIntegration:
             reasoning_config={"enabled": True, "effort": "high"},
             base_url="https://opencode.ai/zen/go/v1",
         )
-        assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+        assert "extra_body" not in kwargs
         assert kwargs["reasoning_effort"] == "high"

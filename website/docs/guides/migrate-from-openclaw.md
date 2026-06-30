@@ -82,7 +82,7 @@ Skill conflicts are handled by `--skill-conflict`: `skip` leaves the existing He
 |------|---------------------|-------------------|---------|
 | Max turns | `agents.defaults.timeoutSeconds` | `agent.max_turns` | `timeoutSeconds / 10`, capped at 200 |
 | Verbose mode | `agents.defaults.verboseDefault` | `agent.verbose` | "off" / "on" / "full" |
-| Reasoning effort | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | "always"/"high"/"xhigh" → "high", "auto"/"medium"/"adaptive" → "medium", "off"/"low"/"none"/"minimal" → "low" |
+| Reasoning effort | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | legacy aliases accepted; `xhigh` stays `xhigh`, `max` stays `max`, `extra_high` / `extra high` normalize to `xhigh`, `off` / `none` disable reasoning |
 | Compression | `agents.defaults.compaction.mode` | `compression.enabled` | "off" → false, anything else → true |
 | Compression model | `agents.defaults.compaction.model` | `compression.summary_model` | Direct string copy |
 | Human delay | `agents.defaults.humanDelay.mode` | `human_delay.mode` | "natural" / "custom" / "off" |
@@ -160,7 +160,7 @@ TTS settings are read from **two** OpenClaw config locations with this priority:
 | Browser headless | `browser.headless` | `config.yaml` → `browser.headless` | |
 | Brave search key | `tools.web.search.brave.apiKey` | `.env` → `BRAVE_API_KEY` | Requires `--migrate-secrets` |
 | Gateway auth token | `gateway.auth.token` | `.env` → `HERMES_GATEWAY_TOKEN` | Requires `--migrate-secrets` |
-| Working directory | `agents.defaults.workspace` | `.env` → `MESSAGING_CWD` | |
+| Working directory | `agents.defaults.workspace` | `config.yaml` → `terminal.cwd` | Legacy migrations may still emit `MESSAGING_CWD` as a compatibility fallback |
 
 ### Archived (no direct Hermes equivalent)
 
@@ -229,7 +229,7 @@ The migration resolves all three formats. For env templates and SecretRef object
 
 5. **Test messaging** — if you migrated platform tokens, restart the gateway: `systemctl --user restart hermes-gateway`
 
-6. **Check session policies** — verify `hermes config get session_reset` matches your expectations.
+6. **Check session policies** — run `hermes config show` and verify the `session_reset` value matches your expectations.
 
 7. **Re-pair WhatsApp** — WhatsApp uses QR code pairing (Baileys), not token migration. Run `hermes whatsapp` to pair.
 

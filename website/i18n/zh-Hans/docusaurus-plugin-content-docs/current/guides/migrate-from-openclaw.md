@@ -78,7 +78,7 @@ Skill 冲突由 `--skill-conflict` 处理：`skip` 保留现有 Hermes skill，`
 |------|---------------------|-------------------|---------|
 | 最大轮次 | `agents.defaults.timeoutSeconds` | `agent.max_turns` | `timeoutSeconds / 10`，上限 200 |
 | 详细模式 | `agents.defaults.verboseDefault` | `agent.verbose` | "off" / "on" / "full" |
-| 推理强度 | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | "always"/"high"/"xhigh" → "high"，"auto"/"medium"/"adaptive" → "medium"，"off"/"low"/"none"/"minimal" → "low" |
+| 推理强度 | `agents.defaults.thinkingDefault` | `agent.reasoning_effort` | 接受旧别名；`xhigh` 保持为 `xhigh`，`max` 保持为 `max`，`extra_high` / `extra high` 规范化为 `xhigh`，`off` / `none` 禁用推理 |
 | 压缩 | `agents.defaults.compaction.mode` | `compression.enabled` | "off" → false，其他 → true |
 | 压缩模型 | `agents.defaults.compaction.model` | `compression.summary_model` | 直接字符串复制 |
 | 人工延迟 | `agents.defaults.humanDelay.mode` | `human_delay.mode` | "natural" / "custom" / "off" |

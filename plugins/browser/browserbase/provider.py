@@ -26,7 +26,14 @@ Optional feature knobs::
     BROWSERBASE_PROXIES=true      # default true
     BROWSERBASE_ADVANCED_STEALTH=false
     BROWSERBASE_KEEP_ALIVE=true   # default true
-    BROWSERBASE_SESSION_TIMEOUT=... (ms, integer)
+    BROWSERBASE_SESSION_TIMEOUT=... (seconds, integer, max 21600 = 6h)
+
+Persistent auth/context config::
+
+    browser:
+      browserbase:
+        context_id: "ctx_..."
+        persist_context: true
 """
 
 from __future__ import annotations
@@ -87,6 +94,52 @@ class BrowserbaseBrowserProvider(BrowserProvider):
             )
         return config
 
+    @staticmethod
+    def _coerce_bool(value: Any, *, default: bool) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return default
+
+    def _get_context_config(self) -> Optional[Dict[str, object]]:
+        """Return Browserbase Context settings from config.yaml, if set.
+
+        ``context_id`` is intentionally read from config rather than adding
+        another behavior-style environment variable. The Browserbase API key
+        remains in ``~/.hermes/.env``; this config value only selects which
+        Browserbase Context that credential should attach to.
+        """
+        try:
+            from hermes_cli.config import read_raw_config
+
+            cfg = read_raw_config()
+        except Exception as exc:
+            logger.debug("Could not read Browserbase context config: %s", exc)
+            return None
+
+        browser_cfg = cfg.get("browser", {}) if isinstance(cfg, dict) else {}
+        if not isinstance(browser_cfg, dict):
+            return None
+        bb_cfg = browser_cfg.get("browserbase", {})
+        if not isinstance(bb_cfg, dict):
+            return None
+
+        context_id = str(bb_cfg.get("context_id") or "").strip()
+        if not context_id:
+            return None
+
+        persist = self._coerce_bool(bb_cfg.get("persist_context"), default=True)
+        return {"id": context_id, "persist": persist}
+
     # ------------------------------------------------------------------
     # Session lifecycle
     # ------------------------------------------------------------------
@@ -113,6 +166,11 @@ class BrowserbaseBrowserProvider(BrowserProvider):
         }
 
         session_config: Dict[str, object] = {"projectId": config["project_id"]}
+        context_config = self._get_context_config()
+        if context_config:
+            session_config["browserSettings"] = {
+                "context": context_config,
+            }
 
         if enable_keep_alive:
             session_config["keepAlive"] = True
@@ -131,7 +189,9 @@ class BrowserbaseBrowserProvider(BrowserProvider):
             session_config["proxies"] = True
 
         if enable_advanced_stealth:
-            session_config["browserSettings"] = {"advancedStealth": True}
+            browser_settings = session_config.setdefault("browserSettings", {})
+            if isinstance(browser_settings, dict):
+                browser_settings["advancedStealth"] = True
 
         # --- Create session via API ---
         headers = {
