@@ -628,10 +628,10 @@ class TestStripMdv2:
 
 
 class TestWrapMarkdownTables:
-    """_wrap_markdown_tables rewrites GFM pipe tables into Telegram-friendly
-    row groups instead of leaving noisy pipe syntax in the final message."""
+    """_wrap_markdown_tables rewrites GFM pipe tables into fenced,
+    monospaced tables instead of Bot API rich-message blocks."""
 
-    def test_basic_table_rewritten_as_row_groups(self):
+    def test_basic_table_rewritten_as_fenced_table(self):
         text = (
             "Scores:\n\n"
             "| Player | Score |\n"
@@ -641,29 +641,30 @@ class TestWrapMarkdownTables:
             "\nEnd."
         )
         out = _wrap_markdown_tables(text)
-        assert "**Alice**" in out
-        # The heading IS the Player cell — don't repeat it as a bullet.
-        assert "• Player: Alice" not in out
-        assert "• Score: 150" in out
-        assert "**Bob**" in out
-        assert "• Score: 120" in out
-        # Heading and its bullet sit on consecutive lines (no blank between).
-        assert "**Alice**\n• Score: 150" in out
-        # Separate row groups ARE separated by a blank line.
-        assert "• Score: 150\n\n**Bob**" in out
-        # Surrounding prose is preserved
-        assert out.startswith("Scores:")
-        assert out.endswith("End.")
+        expected = (
+            "Scores:\n\n"
+            "```\n"
+            "| Player | Score |\n"
+            "|--------|-------|\n"
+            "| Alice  | 150   |\n"
+            "| Bob    | 120   |\n"
+            "```\n\n"
+            "End."
+        )
+        assert out == expected
 
     def test_bare_pipe_table_rewritten(self):
         """Tables without outer pipes (GFM allows this) are still detected."""
         text = "head1 | head2\n--- | ---\na | b\nc | d"
         out = _wrap_markdown_tables(text)
-        assert out.startswith("**a**")
-        # No duplicate first bullet — heading 'a' already shows the head1 value.
-        assert "• head1: a" not in out
-        assert "• head2: b" in out
-        assert "**c**" in out
+        assert out == (
+            "```\n"
+            "| head1 | head2 |\n"
+            "|-------|-------|\n"
+            "| a     | b     |\n"
+            "| c     | d     |\n"
+            "```"
+        )
 
     def test_alignment_separators(self):
         """Separator rows with :--- / ---: / :---: alignment markers match."""
@@ -673,13 +674,13 @@ class TestWrapMarkdownTables:
             "| Ada  |  30 | NYC  |"
         )
         out = _wrap_markdown_tables(text)
-        assert "**Ada**" in out
-        # 'Ada' is the heading (first cell); skip the redundant Name bullet.
-        assert "• Name: Ada" not in out
-        assert "• Age: 30" in out
-        assert "• City: NYC" in out
-        # All three lines pack tightly with single newlines.
-        assert "**Ada**\n• Age: 30\n• City: NYC" in out
+        assert out == (
+            "```\n"
+            "| Name | Age | City |\n"
+            "|------|-----|------|\n"
+            "| Ada  | 30  | NYC  |\n"
+            "```"
+        )
 
     def test_two_consecutive_tables_rewritten_separately(self):
         text = (
@@ -692,13 +693,9 @@ class TestWrapMarkdownTables:
             "| 9 | 8 |"
         )
         out = _wrap_markdown_tables(text)
-        assert out.count("**1**") == 1
-        assert out.count("**9**") == 1
-        # Headings duplicate first cells (no row-label col) — skip those bullets.
-        assert "• A: 1" not in out
-        assert "• X: 9" not in out
-        assert "• B: 2" in out
-        assert "• Y: 8" in out
+        assert out.count("```") == 4
+        assert "| A | B |\n|---|---|\n| 1 | 2 |" in out
+        assert "| X | Y |\n|---|---|\n| 9 | 8 |" in out
 
     def test_plain_text_with_pipes_not_wrapped(self):
         """A bare pipe in prose must NOT trigger wrapping."""
@@ -736,15 +733,8 @@ class TestWrapMarkdownTables:
         text = "| a |\n| - |\n| b |"
         assert _wrap_markdown_tables(text) == text
 
-    def test_row_group_uses_single_newlines_within_group(self):
-        """Regression: each bullet within a row-group must be separated by
-        a single newline, not a blank line.  Telegram renders blank lines
-        as paragraph breaks, which previously left every bullet floating in
-        its own paragraph and made multi-column tables unreadable.
-
-        Mirrors the exact pattern that produced the screenshot bug report:
-        a five-column comparison table with no row-label column.
-        """
+    def test_wide_table_uses_one_monospaced_block(self):
+        """Multi-column tables stay table-shaped without bullet paragraphs."""
         text = (
             "| Play | Capital | Build | $/day | Risk |\n"
             "|---|---|---|---|---|\n"
@@ -753,26 +743,14 @@ class TestWrapMarkdownTables:
         )
         out = _wrap_markdown_tables(text)
 
-        # No bullet sits inside its own paragraph: the substring "\n\n• "
-        # would mean a blank line precedes a bullet, which is the bug.
-        assert "\n\n• " not in out
+        assert out.startswith("```\n| Play")
+        assert out.endswith("\n```")
+        assert "•" not in out
+        assert "| A. Copy Hands (HK/SZ) | $5-10k" in out
+        assert "| B. NO-sweeper         | $50-100k" in out
+        assert len(out.splitlines()) == 6
 
-        # The two row-groups DO have a paragraph break between them.
-        groups = [g for g in out.split("\n\n") if g.strip()]
-        assert len(groups) == 2
-        # Heading + 4 bullets per group means each group is exactly 5 lines.
-        for group in groups:
-            line_count = group.count("\n") + 1
-            assert line_count == 5, (
-                "Each row-group should be 5 lines (heading + 4 bullets), "
-                f"got {line_count}:\n{group}"
-            )
-
-    def test_row_label_column_preserves_first_bullet(self):
-        """When the table has a row-label column (data rows have one more
-        cell than the header row), the heading comes from the label cell
-        and is distinct from any header — so every header→value bullet is
-        kept, including the first one."""
+    def test_row_label_column_stays_table_shaped(self):
         text = (
             "|        | Score | Rank |\n"
             "|--------|-------|------|\n"
@@ -780,18 +758,20 @@ class TestWrapMarkdownTables:
             "| Bob    | 120   | 2    |\n"
         )
         out = _wrap_markdown_tables(text)
-        assert "**Alice**" in out
-        # No header to duplicate against — both bullets stay.
-        assert "• Score: 150" in out
-        assert "• Rank: 1" in out
-        assert "**Alice**\n• Score: 150\n• Rank: 1" in out
+        assert out == (
+            "```\n"
+            "|       | Score | Rank |\n"
+            "|-------|-------|------|\n"
+            "| Alice | 150   | 1    |\n"
+            "| Bob   | 120   | 2    |\n"
+            "```\n"
+        )
 
 
 class TestFormatMessageTables:
-    """End-to-end: pipe tables become readable Telegram-native text instead
-    of escaped pipe syntax or fenced code blocks."""
+    """End-to-end: pipe tables stay readable on MarkdownV2 as fenced code."""
 
-    def test_table_rendered_as_bullets(self, adapter):
+    def test_table_rendered_as_fenced_table(self, adapter):
         text = (
             "Data:\n\n"
             "| Col1 | Col2 |\n"
@@ -799,12 +779,11 @@ class TestFormatMessageTables:
             "| A    | B    |\n"
         )
         out = adapter.format_message(text)
-        assert "*A*" in out
-        # Heading 'A' duplicates the Col1 value — skip that bullet.
-        assert "• Col1: A" not in out
-        assert "• Col2: B" in out
-        assert "```" not in out
+        assert "```" in out
+        assert "| Col1 | Col2 |" in out
+        assert "| A    | B    |" in out
         assert "\\|" not in out
+        assert "•" not in out
 
     def test_text_after_table_still_formatted(self, adapter):
         text = (
@@ -819,10 +798,8 @@ class TestFormatMessageTables:
         assert "*work*" in out
         # Exclamation outside fence is escaped
         assert "\\!" in out
-        assert "*1*" in out
-        # Heading '1' is also the A-column value — skip the redundant bullet.
-        assert "• A: 1" not in out
-        assert "• B: 2" in out
+        assert "| 1 | 2 |" in out
+        assert "\\|" not in out
 
     def test_multiple_tables_in_single_message(self, adapter):
         text = (
@@ -837,9 +814,10 @@ class TestFormatMessageTables:
             "| 9 | 8 |\n"
         )
         out = adapter.format_message(text)
-        assert out.count("*1*") == 1
-        assert out.count("*9*") == 1
-        assert "• Y: 8" in out
+        assert out.count("```") == 4
+        assert "| 1 | 2 |" in out
+        assert "| 9 | 8 |" in out
+        assert "•" not in out
 
 
 @pytest.mark.asyncio
